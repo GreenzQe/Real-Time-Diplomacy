@@ -97,6 +97,7 @@ function handleMoveUnitBtnClick() {
     document.getElementById("moveUnitBtn").addEventListener("click", handleMoveUnitBtnClick);
     document.getElementById("mapContainer").addEventListener("click", handleMapContainerClick);
     document.getElementById("closeUnitInfoBtn").addEventListener("click", deselectUnit);
+    document.getElementById("captureRegionBtn").addEventListener("click", captureRegion);
   }
   
   
@@ -128,14 +129,16 @@ function handleMoveUnitBtnClick() {
   
     // Now create your map regions
     mapData.regions.forEach(region => {
-      const path = document.createElementNS(svgNS, "path");
-      path.setAttribute("d", region.path);
-      path.setAttribute("fill", "gray");
-      path.setAttribute("stroke", "black");
-      path.setAttribute("stroke-width", "0.1");
-      path.setAttribute("id", region.id);
-      regionsGroup.appendChild(path);
-    });
+        const path = document.createElementNS(svgNS, "path");
+        path.setAttribute("d", region.path);
+        path.setAttribute("fill", "gray");
+        // Store the initial base color
+        path.setAttribute("data-base-color", "gray");
+        path.setAttribute("stroke", "black");
+        path.setAttribute("stroke-width", "0.1");
+        path.setAttribute("id", region.id);
+        regionsGroup.appendChild(path);
+      });
   
     document.getElementById("mapContainer").appendChild(svg);
     setupTooltip();
@@ -144,71 +147,85 @@ function handleMoveUnitBtnClick() {
   }
   
 
-function setupTooltip() {
-  const tooltip = document.createElement("div");
-  tooltip.style.position = "absolute";
-  tooltip.style.padding = "10px";
-  tooltip.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
-  tooltip.style.color = "white";
-  tooltip.style.borderRadius = "5px";
-  tooltip.style.visibility = "hidden";
-  tooltip.style.pointerEvents = "none";
-  document.body.appendChild(tooltip);
-
-  svg.querySelectorAll("path").forEach(country => {
-    const regionId = country.id;
-    const originalColor = country.getAttribute("fill");
-
-    country.addEventListener("mouseover", event => showTooltip(event, regionId, tooltip, originalColor));
-    country.addEventListener("mouseleave", () => hideTooltip(tooltip, country, originalColor));
-  });
-}
-
-function showTooltip(event, regionId, tooltip, originalColor) {
-  const region = tileStats[regionId];
-  tooltip.textContent = `Region ID: ${regionId}\nTile stats: ${JSON.stringify(region, null, 2)}`;
-  tooltip.style.visibility = "visible";
-  tooltip.style.left = `${event.pageX + 10}px`;
-  tooltip.style.top = `${event.pageY + 10}px`;
-
-  const gradientId = `gradient-${regionId}`;
-  let defs = svg.querySelector("defs");
-  if (!defs) {
-    defs = document.createElementNS(svgNS, "defs");
-    svg.insertBefore(defs, svg.firstChild);
+  function setupTooltip() {
+    const tooltip = document.createElement("div");
+    tooltip.style.position = "absolute";
+    tooltip.style.padding = "10px";
+    tooltip.style.backgroundColor = "rgba(0, 0, 0, 0.7)";
+    tooltip.style.color = "white";
+    tooltip.style.borderRadius = "5px";
+    tooltip.style.visibility = "hidden";
+    tooltip.style.pointerEvents = "none";
+    document.body.appendChild(tooltip);
+  
+    svg.querySelectorAll("path").forEach(country => {
+      const regionId = country.id;
+  
+      country.addEventListener("mouseover", event => showTooltip(event, regionId, tooltip));
+      country.addEventListener("mouseleave", () => hideTooltip(tooltip, country));
+    });
   }
-  const radialGradient = createRadialGradient(gradientId, originalColor);
-  defs.appendChild(radialGradient);
-  event.target.setAttribute("fill", `url(#${gradientId})`);
-}
 
-function hideTooltip(tooltip, country, originalColor) {
-  tooltip.style.visibility = "hidden";
-  country.setAttribute("fill", originalColor);
-}
+  function showTooltip(event, regionId, tooltip) {
+    const country = event.target;
+    // Use the region's base color stored in a data attribute (or fallback to gray)
+    const baseColor = country.getAttribute("data-base-color") || "gray";
+    // Get the current owner from the data attribute (defaulting to "Unclaimed")
+    const owner = country.getAttribute("data-owner") || "Unclaimed";
+    const region = tileStats[regionId];
+    
+    tooltip.textContent = `Region ID: ${regionId}\nOwner: ${owner}\nTile stats: ${JSON.stringify(region, null, 2)}`;
+    tooltip.style.visibility = "visible";
+    tooltip.style.left = `${event.pageX + 10}px`;
+    tooltip.style.top = `${event.pageY + 10}px`;
+    
+    const gradientId = `gradient-${regionId}`;
+    let defs = svg.querySelector("defs");
+    if (!defs) {
+      defs = document.createElementNS(svgNS, "defs");
+      svg.insertBefore(defs, svg.firstChild);
+    }
+    
+    // Remove any existing gradient for this region so that the new one uses the updated base color.
+    const existingGradient = document.getElementById(gradientId);
+    if (existingGradient) {
+      existingGradient.remove();
+    }
+    
+    // Create the gradient using the region's current base color (e.g., "red" or "blue" if captured)
+    const radialGradient = createRadialGradient(gradientId, baseColor);
+    defs.appendChild(radialGradient);
+    country.setAttribute("fill", `url(#${gradientId})`);
+  }
 
-function createRadialGradient(id, color) {
-  const radialGradient = document.createElementNS(svgNS, "radialGradient");
-  radialGradient.setAttribute("id", id);
-  radialGradient.setAttribute("cx", "50%");
-  radialGradient.setAttribute("cy", "50%");
-  radialGradient.setAttribute("r", "90%");
-  radialGradient.setAttribute("fx", "50%");
-  radialGradient.setAttribute("fy", "50%");
+  function hideTooltip(tooltip, country) {
+    tooltip.style.visibility = "hidden";
+    // Restore the region's fill to its base color (gray for unclaimed)
+    const baseColor = country.getAttribute("data-base-color") || "gray";
+    country.setAttribute("fill", baseColor);
+  }
 
-  const stop1 = document.createElementNS(svgNS, "stop");
-  stop1.setAttribute("offset", "0%");
-  stop1.setAttribute("stop-color", color);
-  radialGradient.appendChild(stop1);
-
-  const stop2 = document.createElementNS(svgNS, "stop");
-  stop2.setAttribute("offset", "100%");
-  stop2.setAttribute("stop-color", "lightblue");
-  radialGradient.appendChild(stop2);
-
-  return radialGradient;
-}
-
+  function createRadialGradient(id, color) {
+    const radialGradient = document.createElementNS(svgNS, "radialGradient");
+    radialGradient.setAttribute("id", id);
+    radialGradient.setAttribute("cx", "50%");
+    radialGradient.setAttribute("cy", "50%");
+    radialGradient.setAttribute("r", "90%");
+    radialGradient.setAttribute("fx", "50%");
+    radialGradient.setAttribute("fy", "50%");
+  
+    const stop1 = document.createElementNS(svgNS, "stop");
+    stop1.setAttribute("offset", "0%");
+    stop1.setAttribute("stop-color", color);
+    radialGradient.appendChild(stop1);
+  
+    const stop2 = document.createElementNS(svgNS, "stop");
+    stop2.setAttribute("offset", "100%");
+    stop2.setAttribute("stop-color", "lightblue");
+    radialGradient.appendChild(stop2);
+  
+    return radialGradient;
+  }
 function setupZoom() {
     panZoomInstance = svgPanZoom(svg, {
       viewportSelector: '#viewport',
@@ -277,27 +294,29 @@ function selectUnit(unit) {
     unitInfoPanel.style.display = "block";
     document.getElementById("unitHealth").textContent = `Health: ${unit.health}`;
     document.getElementById("unitTravelTime").textContent = unit.isTraveling ? `Travel Time: ${unit.travelTime}s` : "Travel Time: -";
-  
+    
     // Determine region or water
     const regionId = findRegionAtPoint(unit.position.x, unit.position.y);
     const locationLabel = regionId ? regionId : "Water";
     document.getElementById("unitLocation").textContent = `Location: ${locationLabel}`;
-  
+    
     document.getElementById("moveUnitBtn").style.display = "inline-block";
     document.getElementById("closeUnitInfoBtn").style.display = "inline-block";
     selectedUnit = unit;
+    updateCaptureRegionBtn();
   }
-
+  
   function deselectUnit() {
     selectedUnit = null;
     const unitInfoPanel = document.getElementById("unitInfoPanel");
     unitInfoPanel.style.display = "none";
-    // Optionally clear the fields:
     document.getElementById("unitHealth").textContent = "";
     document.getElementById("unitTravelTime").textContent = "Travel Time: -";
     document.getElementById("unitLocation").textContent = "";
     document.getElementById("moveUnitBtn").style.display = "none";
     document.getElementById("closeUnitInfoBtn").style.display = "none";
+    // Hide capture button when no unit is selected.
+    document.getElementById("captureRegionBtn").style.display = "none";
     console.log("Unit deselected.");
   }
 
@@ -307,7 +326,10 @@ function selectUnit(unit) {
       return;
     }
     
-    // Remove destination marker and text as soon as movement starts.
+    // Hide the MoveUnit and CaptureRegion buttons as soon as movement begins
+    document.getElementById("moveUnitBtn").style.display = "none";
+    document.getElementById("captureRegionBtn").style.display = "none";
+    
     if (window.destinationMarker) {
       window.destinationMarker.remove();
       window.destinationText.remove();
@@ -319,11 +341,9 @@ function selectUnit(unit) {
     const dy = endY - startY;
     const totalDistance = Math.sqrt(dx * dx + dy * dy);
     
-    // Calculate the estimated travel time once (using sampling)
     const estimatedTravelTime = calculateEstimatedTravelTime(unit.position, dest);
     console.log(`Estimated travel time for ${unit.id}: ${estimatedTravelTime.toFixed(1)}s`);
     
-    // Optionally draw a temporary line (using the same code as before)
     const line = document.createElementNS(svgNS, "line");
     line.setAttribute("x1", startX);
     line.setAttribute("y1", startY);
@@ -336,7 +356,7 @@ function selectUnit(unit) {
     let distanceTraveled = 0;
     let lastFrameTime = 0;
     unit.isTraveling = true;
-    unit.travelTime = estimatedTravelTime; // initial value
+    unit.travelTime = estimatedTravelTime;
     
     const directionX = dx / totalDistance;
     const directionY = dy / totalDistance;
@@ -345,21 +365,20 @@ function selectUnit(unit) {
       if (!lastFrameTime) lastFrameTime = timestamp;
       const dt = (timestamp - lastFrameTime) / 1000;
       lastFrameTime = timestamp;
-    
-      // Check environment (adjust speed if necessary)
+      
       let localSpeed = BASE_SPEED;
       if (isWater(unit.position)) {
         localSpeed *= WATER_MULTIPLIER;
       } else if (isEnemyTerritory(unit.position)) {
         localSpeed *= ENEMY_TERRITORY_MULTIPLIER;
       }
-    
+      
       const distanceStep = localSpeed * dt;
       distanceTraveled += distanceStep;
       if (distanceTraveled > totalDistance) {
         distanceTraveled = totalDistance;
       }
-    
+      
       const currentX = startX + directionX * distanceTraveled;
       const currentY = startY + directionY * distanceTraveled;
       unit.position = { x: currentX, y: currentY };
@@ -367,12 +386,11 @@ function selectUnit(unit) {
         unit.element.setAttribute("cx", currentX);
         unit.element.setAttribute("cy", currentY);
       }
-    
-      // Calculate and log remaining travel time
+      
       const distanceLeft = totalDistance - distanceTraveled;
       const remainingTime = distanceLeft / localSpeed;
       unit.travelTime = remainingTime;
-    
+      
       if (distanceTraveled < totalDistance) {
         requestAnimationFrame(animate);
       } else {
@@ -380,6 +398,10 @@ function selectUnit(unit) {
         unit.travelTime = 0;
         line.remove();
         console.log(`Unit ${unit.id} reached destination`);
+        // Show the MoveUnit button again
+        document.getElementById("moveUnitBtn").style.display = "inline-block";
+        // Update the CaptureRegion button based on the new location
+        updateCaptureRegionBtn();
       }
     }
     
@@ -439,6 +461,99 @@ function findRegionAtPoint(x, y) {
       }
     }
     return null;
+  }
+
+  function updateCaptureRegionBtn() {
+    const captureBtn = document.getElementById("captureRegionBtn");
+    // Hide button if no unit is selected or the unit is moving
+    if (!selectedUnit || selectedUnit.isTraveling) {
+      captureBtn.style.display = "none";
+      return;
+    }
+    
+    // Determine the region at the unit's position
+    const regionId = findRegionAtPoint(selectedUnit.position.x, selectedUnit.position.y);
+    if (!regionId) {
+      captureBtn.style.display = "none";
+      return;
+    }
+    
+    const regionEl = document.getElementById(regionId);
+    // Determine what the player's color should be
+    const playerColor = selectedUnit.owner === "Player1" ? "red"
+                      : selectedUnit.owner === "Player2" ? "blue"
+                      : "gray";
+    
+    // Hide button if the region is already owned by the player.
+    if (regionEl.getAttribute("fill") === playerColor) {
+      captureBtn.style.display = "none";
+      return;
+    }
+    
+    captureBtn.style.display = "inline-block";
+  }
+
+  function captureRegion() {
+    if (!selectedUnit) {
+      alert("Please select a unit first.");
+      return;
+    }
+    
+    // Prevent capture while the unit is moving.
+    if (selectedUnit.isTraveling) {
+      alert("Unit is currently moving. Cannot capture region while moving.");
+      return;
+    }
+    
+    const regionId = findRegionAtPoint(selectedUnit.position.x, selectedUnit.position.y);
+    if (!regionId) {
+      alert("Your unit is not on a region!");
+      return;
+    }
+    if (selectedUnit.health < 10) {
+      alert("Not enough health to capture the region!");
+      return;
+    }
+    
+    // Deduct 10 health from the unit
+    selectedUnit.health -= 10;
+    document.getElementById("unitHealth").textContent = `Health: ${selectedUnit.health}`;
+    
+    // If health falls under 10, the unit dies.
+    if (selectedUnit.health < 1) {
+      killUnit(selectedUnit);
+      alert(`Unit ${selectedUnit.id} has died.`);
+      return;
+    }
+    
+    // Change the region's color based on the unit's owner
+    const regionEl = document.getElementById(regionId);
+    let newColor = "gray";
+    if (selectedUnit.owner === "Player1") {
+      newColor = "red";
+    } else if (selectedUnit.owner === "Player2") {
+      newColor = "blue";
+    }
+    regionEl.setAttribute("fill", newColor);
+    // Update the base color and store the current owner
+    regionEl.setAttribute("data-base-color", newColor);
+    regionEl.setAttribute("data-owner", selectedUnit.owner);
+    
+    console.log(`Region ${regionId} captured by ${selectedUnit.owner}.`);
+  }
+
+  function killUnit(unit) {
+    // Remove the unit's SVG element
+    if (unit.element) {
+      unit.element.remove();
+    }
+    // Remove the unit from the units array
+    units = units.filter(u => u !== unit);
+    // If the killed unit was selected, deselect it
+    if (selectedUnit === unit) {
+      deselectUnit();
+    }
+    console.log(`Unit ${unit.id} has died.`);
   }
 
 function updatePlayerStats() {
