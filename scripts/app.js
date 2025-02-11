@@ -1,6 +1,9 @@
 const svgNS = "http://www.w3.org/2000/svg";
 let svg;
 let tileStats = {};
+let units = [];  // Array to store units
+let panZoomInstance;
+let currentZoom = 1;  // Track current zoom level
 
 // Load JSON and Initialize the Map
 function loadMapData(url) {
@@ -9,7 +12,7 @@ function loadMapData(url) {
         .then(mapData => {
             createSVG(mapData);
             initTileStats(mapData);
-            addEventListenersToCountries();
+            addUnitToRegion("Jutland_01", "Player1");
         })
         .catch(error => console.error("Error loading JSON:", error));
 }
@@ -122,12 +125,94 @@ function createSVG(mapData) {
     });
 }
 
+// Unit object structure
+function createUnit(regionId, position, health, owner) {
+    return {
+        id: `${regionId}-unit`,  // Unique ID for unit
+        regionId: regionId,
+        position: position,  // {x, y} coordinates
+        health: health,
+        owner: owner,  // Owner (e.g., player or team ID)
+        element: null  // SVG element representing the unit
+    };
+}
+
+// Function to render the unit as an SVG element
+function renderUnit(unit) {
+    // Choose a color based on the owner
+    const ownerColor = unit.owner === "Player1" ? "red" : unit.owner === "Player2" ? "blue" : "gray"; // Example owner colors
+
+    // Create a simple circle to represent the unit
+    const unitElement = document.createElementNS(svgNS, "circle");
+    unitElement.setAttribute("cx", unit.position.x);
+    unitElement.setAttribute("cy", unit.position.y);
+    unitElement.setAttribute("r", 10);  // Radius of the unit
+    unitElement.setAttribute("fill", ownerColor);  // Fill color based on owner
+    unitElement.setAttribute("stroke", "black");
+    unitElement.setAttribute("stroke-width", "1");
+
+    // Add the unit to the SVG
+    svg.appendChild(unitElement);
+    
+    // Save the reference to the unit element
+    unit.element = unitElement;
+}
+
+
+// Function to add a unit to a specific region
+function addUnitToRegion(regionId, owner) {
+    const region = svg.querySelector(`#${regionId}`);
+    if (region) {
+        // Get the center coordinates of the region (just an example, you can adjust based on the actual region shape)
+        const boundingBox = region.getBoundingClientRect();
+        const centerX = boundingBox.left + boundingBox.width / 2;
+        const centerY = boundingBox.top + boundingBox.height / 2;
+        
+        // Create a unit at the center of the region with the specified owner
+        const unit = createUnit(regionId, { x: centerX, y: centerY }, 100, owner);  // 100 health for now
+        renderUnit(unit);
+        units.push(unit);  // Add to the units array for future reference
+    }
+}
+
+// Update zoom level
+function updateZoomLevel(zoom) {
+    currentZoom = zoom;  // Update the current zoom level
+    updateUnitPositions();  // Reposition units based on the new zoom level
+}
+
+// Function to update unit positions based on the zoom level and pan position
+function updateUnitPositions() {
+    units.forEach(unit => {
+        if (unit.element) {
+            const region = svg.querySelector(`#${unit.regionId}`);
+            if (region) {
+                // Get the center of the region again, accounting for zoom and pan
+                const boundingBox = region.getBoundingClientRect();
+                const centerX = boundingBox.left + boundingBox.width / 2;
+                const centerY = boundingBox.top + boundingBox.height / 2;
+
+                // Adjust unit's position based on the zoom level and pan offset
+                const pan = panZoomInstance.getPan();  // Get the current pan offset
+                const scale = panZoomInstance.getScale();  // Get the current zoom scale
+
+                // Apply pan and zoom transformations to the unit's position
+                const adjustedX = (centerX + pan.x) * scale;
+                const adjustedY = (centerY + pan.y) * scale;
+
+                unit.element.setAttribute("cx", adjustedX);
+                unit.element.setAttribute("cy", adjustedY);
+            }
+        }
+    });
+}
+
 // Initialize tile stats from JSON
 function initTileStats(mapData) {
     mapData.regions.forEach(region => {
         tileStats[region.id] = {
             owner: null,
-            troops: 0,
+            tax_tile: false,
             terrain: region.terrain || "plain"
         };
     });
