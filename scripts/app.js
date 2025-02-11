@@ -18,30 +18,32 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 function handleMoveUnitBtnClick() {
-  if (destination) {
-    moveSelectedUnitToDestination(destination);
-    destination = null;
-  } else {
-    alert("Please select a destination on the map first.");
-  }
-}
-
-function handleMapContainerClick(event) {
-    if (selectedUnit) {
-      const viewport = svg.querySelector("#viewport");
-      const point = svg.createSVGPoint();
-      const rect = svg.getBoundingClientRect();
-
-      point.x = event.clientX - rect.left;
-      point.y = event.clientY - rect.top;
-  
-      // Get the transformation matrix applied by svg-pan-zoom
-      const screenCTM = viewport.getScreenCTM().inverse();
-      const svgPoint = point.matrixTransform(screenCTM);
-  
-      destination = { x: svgPoint.x, y: svgPoint.y };
-      console.log("Destination selected:", destination);
+    if (destination && selectedUnit) {
+      moveUnitToDestination(selectedUnit, destination);
+      destination = null;
+    } else {
+      alert("Please select a unit and a destination on the map first.");
     }
+  }
+  
+function handleMapContainerClick(event) {
+    if (!selectedUnit) {
+      console.log("Please select a unit first.");
+      return;
+    }
+    const viewport = svg.querySelector("#viewport");
+    const point = svg.createSVGPoint();
+    const rect = svg.getBoundingClientRect();
+  
+    point.x = event.clientX - rect.left;
+    point.y = event.clientY - rect.top;
+  
+    // Get the transformation matrix applied by svg-pan-zoom
+    const screenCTM = viewport.getScreenCTM().inverse();
+    const svgPoint = point.matrixTransform(screenCTM);
+  
+    destination = { x: svgPoint.x, y: svgPoint.y };
+    console.log("Destination selected:", destination);
   }
   
   function loadMapData(url) {
@@ -61,9 +63,6 @@ function handleMapContainerClick(event) {
     document.getElementById("tradeBtn").addEventListener("click", () => alert("Trade action triggered!"));
     document.getElementById("moveUnitBtn").addEventListener("click", handleMoveUnitBtnClick);
     document.getElementById("mapContainer").addEventListener("click", handleMapContainerClick);
-  
-    // Attach click event to the SVG element
-    svg.addEventListener("click", handleMapContainerClick);
   }
   
   
@@ -254,23 +253,23 @@ function selectUnit(unit) {
     selectedUnit = unit;
   }
 
-  function moveSelectedUnitToDestination(dest) {
-    if (!selectedUnit || !dest) return;
-  
-    const { x: startX, y: startY } = selectedUnit.position;
+  function moveUnitToDestination(unit, dest) {
+    if (unit.isTraveling) {
+      console.log(`Unit ${unit.id} is already moving!`);
+      return;
+    }
+    
+    const { x: startX, y: startY } = unit.position;
     const { x: endX, y: endY } = dest;
     const dx = endX - startX;
     const dy = endY - startY;
     const totalDistance = Math.sqrt(dx * dx + dy * dy);
-  
-    // Calculate a better estimated travel time once (using sampling)
-    const estimatedTravelTime = calculateEstimatedTravelTime(selectedUnit.position, dest);
-    // Set the initial display showing the full estimate.
-    document.getElementById("unitTravelTime").textContent = 
-      `Estimated: ${estimatedTravelTime.toFixed(1)}s | Remaining: ${estimatedTravelTime.toFixed(1)}s`;
-    console.log(`Estimated travel time: ${estimatedTravelTime.toFixed(1)}s`);
-  
-    // Draw a temporary line
+    
+    // Calculate the estimated travel time once (using sampling)
+    const estimatedTravelTime = calculateEstimatedTravelTime(unit.position, dest);
+    console.log(`Estimated travel time for ${unit.id}: ${estimatedTravelTime.toFixed(1)}s`);
+    
+    // Optionally draw a temporary line (using the same code as before)
     const line = document.createElementNS(svgNS, "line");
     line.setAttribute("x1", startX);
     line.setAttribute("y1", startY);
@@ -279,67 +278,58 @@ function selectUnit(unit) {
     line.setAttribute("stroke", "yellow");
     line.setAttribute("stroke-width", "0.1");
     svg.querySelector("#unitsGroup").appendChild(line);
-  
-    // Prepare incremental movement
+    
     let distanceTraveled = 0;
     let lastFrameTime = 0;
-    selectedUnit.isTraveling = true;
-    selectedUnit.travelTime = estimatedTravelTime; // initial value
-  
+    unit.isTraveling = true;
+    unit.travelTime = estimatedTravelTime; // initial value
+    
     const directionX = dx / totalDistance;
     const directionY = dy / totalDistance;
-  
+    
     function animate(timestamp) {
       if (!lastFrameTime) lastFrameTime = timestamp;
       const dt = (timestamp - lastFrameTime) / 1000;
       lastFrameTime = timestamp;
-  
-      // Check environment (adjusts speed if necessary)
+    
+      // Check environment (adjust speed if necessary)
       let localSpeed = BASE_SPEED;
-      if (isWater(selectedUnit.position)) {
+      if (isWater(unit.position)) {
         localSpeed *= WATER_MULTIPLIER;
-      } else if (isEnemyTerritory(selectedUnit.position)) {
+      } else if (isEnemyTerritory(unit.position)) {
         localSpeed *= ENEMY_TERRITORY_MULTIPLIER;
       }
-  
-      // Move the unit step-by-step
+    
       const distanceStep = localSpeed * dt;
       distanceTraveled += distanceStep;
       if (distanceTraveled > totalDistance) {
         distanceTraveled = totalDistance;
       }
-  
+    
       const currentX = startX + directionX * distanceTraveled;
       const currentY = startY + directionY * distanceTraveled;
-      selectedUnit.element.setAttribute("cx", currentX);
-      selectedUnit.element.setAttribute("cy", currentY);
-      selectedUnit.position = { x: currentX, y: currentY };
-  
-      // Update current location in the info panel
-      const regionId = findRegionAtPoint(currentX, currentY);
-      const locationLabel = regionId ? regionId : "Water";
-      document.getElementById("unitLocation").textContent = `Location: ${locationLabel}`;
-  
-      // Calculate the remaining (countdown) travel time using current localSpeed
+      unit.position = { x: currentX, y: currentY };
+      if (unit.element) {
+        unit.element.setAttribute("cx", currentX);
+        unit.element.setAttribute("cy", currentY);
+      }
+    
+      // Calculate and log remaining travel time
       const distanceLeft = totalDistance - distanceTraveled;
       const remainingTime = distanceLeft / localSpeed;
-      selectedUnit.travelTime = remainingTime;
-      
-      // Display both initial estimate and the countdown remaining time
-      document.getElementById("unitTravelTime").textContent =
-        `Estimated: ${estimatedTravelTime.toFixed(1)}s | Remaining: ${remainingTime.toFixed(1)}s`;
-  
+      unit.travelTime = remainingTime;
+      console.log(`Unit ${unit.id} - Remaining time: ${remainingTime.toFixed(1)}s`);
+    
       if (distanceTraveled < totalDistance) {
         requestAnimationFrame(animate);
       } else {
-        // Cleanup at the end of the movement
-        selectedUnit.isTraveling = false;
-        selectedUnit.travelTime = 0;
+        unit.isTraveling = false;
+        unit.travelTime = 0;
         line.remove();
-        console.log("Unit reached destination");
+        console.log(`Unit ${unit.id} reached destination`);
       }
     }
-  
+    
     requestAnimationFrame(animate);
   }
 
