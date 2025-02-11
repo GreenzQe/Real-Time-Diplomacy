@@ -1,4 +1,4 @@
-# Real Time Diplomacy - Placeholder Title
+# Real-Time Diplomacy - Placeholder Title
 
 A Browser based real time Diplomacy like
 
