@@ -10,6 +10,7 @@ let panZoomInstance;
 let currentZoom = 1;
 let destination = null;
 let selectedUnit = null;
+let currentPlayer = "Player1";
 
 document.addEventListener("DOMContentLoaded", () => {
   loadMapData("assets/map.json");
@@ -62,7 +63,7 @@ function handleMoveUnitBtnClick() {
     window.destinationMarker = document.createElementNS(svgNS, "circle");
     window.destinationMarker.setAttribute("cx", destination.x);
     window.destinationMarker.setAttribute("cy", destination.y);
-    window.destinationMarker.setAttribute("r", 0.5);
+    window.destinationMarker.setAttribute("r", 0.25);
     window.destinationMarker.setAttribute("fill", "yellow");
     svg.querySelector("#unitsGroup").appendChild(window.destinationMarker);
     
@@ -85,19 +86,20 @@ function handleMoveUnitBtnClick() {
       .then(mapData => {
         createSVG(mapData);
         tileStats(mapData);
-        addUnitToRegion("Jutland_01", "Player1");
+        addUnitToRegion("Jutland_01");
         updatePlayerStats();
       })
       .catch(error => console.error("Error loading JSON:", error));
   }
   
   function setupEventListeners() {
-    document.getElementById("createUnitBtn").addEventListener("click", () => addUnitToRegion("Jutland_01", "Player1"));
+    document.getElementById("createUnitBtn").addEventListener("click", () => addUnitToRegion("Jutland_01"));
     document.getElementById("tradeBtn").addEventListener("click", () => alert("Trade action triggered!"));
     document.getElementById("moveUnitBtn").addEventListener("click", handleMoveUnitBtnClick);
     document.getElementById("mapContainer").addEventListener("click", handleMapContainerClick);
     document.getElementById("closeUnitInfoBtn").addEventListener("click", deselectUnit);
     document.getElementById("captureRegionBtn").addEventListener("click", captureRegion);
+    document.getElementById("switchPlayerBtn").addEventListener("click", switchPlayer);
   }
   
   
@@ -146,6 +148,15 @@ function handleMoveUnitBtnClick() {
     setupEventListeners(); // Ensure this is called here
   }
   
+  // Add this function to switch the current player:
+function switchPlayer() {
+    currentPlayer = currentPlayer === "Player1" ? "Player2" : "Player1";
+    console.log("Switched player to:", currentPlayer);
+    const playerDisplay = document.getElementById("currentPlayer");
+    if (playerDisplay) {
+      playerDisplay.textContent = `Current Player: ${currentPlayer}`;
+    }
+  }
 
   function setupTooltip() {
     const tooltip = document.createElement("div");
@@ -172,9 +183,8 @@ function handleMoveUnitBtnClick() {
     const baseColor = country.getAttribute("data-base-color") || "gray";
     // Get the current owner from the data attribute (defaulting to "Unclaimed")
     const owner = country.getAttribute("data-owner") || "Unclaimed";
-    const region = tileStats[regionId];
-    
-    tooltip.textContent = `Region ID: ${regionId}\nOwner: ${owner}\nTile stats: ${JSON.stringify(region, null, 2)}`;
+    // Update tooltip text without tile stats
+    tooltip.textContent = `Region ID: ${regionId}\nOwner: ${owner}`;
     tooltip.style.visibility = "visible";
     tooltip.style.left = `${event.pageX + 10}px`;
     tooltip.style.top = `${event.pageY + 10}px`;
@@ -192,7 +202,7 @@ function handleMoveUnitBtnClick() {
       existingGradient.remove();
     }
     
-    // Create the gradient using the region's current base color (e.g., "red" or "blue" if captured)
+    // Create the gradient using the region's current base color.
     const radialGradient = createRadialGradient(gradientId, baseColor);
     defs.appendChild(radialGradient);
     country.setAttribute("fill", `url(#${gradientId})`);
@@ -236,7 +246,7 @@ function setupZoom() {
       mouseWheelZoomEnabled: true,
       preventMouseEventsDefault: false, // Allow events to propagate
       zoomScaleSensitivity: 0.2,
-      minZoom: 0.5,
+      minZoom: 1,
       maxZoom: 10,
       fit: true,
       center: true,
@@ -263,7 +273,7 @@ function renderUnit(unit) {
     const unitElement = document.createElementNS(svgNS, "circle");
     unitElement.setAttribute("cx", unit.position.x);
     unitElement.setAttribute("cy", unit.position.y);
-    unitElement.setAttribute("r", 1);
+    unitElement.setAttribute("r", 0.5);
     unitElement.setAttribute("fill", ownerColor);
     unitElement.setAttribute("stroke", "black");
     unitElement.setAttribute("stroke-width", "0.1");
@@ -276,20 +286,27 @@ function renderUnit(unit) {
   }
   
 
-function addUnitToRegion(regionId, owner) {
-  const region = svg.querySelector(`#${regionId}`);
-  if (region) {
-    const bbox = region.getBBox();
-    const centerX = bbox.x + bbox.width / 2;
-    const centerY = bbox.y + bbox.height / 2;
-    const unit = createUnit(regionId, { x: centerX, y: centerY }, 100, owner);
-    renderUnit(unit);
-    units.push(unit);
-    updatePlayerStats();
+  function addUnitToRegion(regionId, owner) {
+    // Default to currentPlayer if no owner is provided.
+    owner = owner || currentPlayer;
+    const region = svg.querySelector(`#${regionId}`);
+    if (region) {
+      const bbox = region.getBBox();
+      const centerX = bbox.x + bbox.width / 2;
+      const centerY = bbox.y + bbox.height / 2;
+      const unit = createUnit(regionId, { x: centerX, y: centerY }, 100, owner);
+      renderUnit(unit);
+      units.push(unit);
+      updatePlayerStats();
+    }
   }
-}
 
-function selectUnit(unit) {
+  function selectUnit(unit) {
+    if (unit.owner !== currentPlayer) {
+      alert("You can only select your own units.");
+      return;
+    }
+    
     const unitInfoPanel = document.getElementById("unitInfoPanel");
     unitInfoPanel.style.display = "block";
     document.getElementById("unitHealth").textContent = `Health: ${unit.health}`;
@@ -317,10 +334,26 @@ function selectUnit(unit) {
     document.getElementById("closeUnitInfoBtn").style.display = "none";
     // Hide capture button when no unit is selected.
     document.getElementById("captureRegionBtn").style.display = "none";
+  
+    // Remove the yellow destination marker and text if they exist.
+    if (window.destinationMarker) {
+      window.destinationMarker.remove();
+      window.destinationMarker = null;
+    }
+    if (window.destinationText) {
+      window.destinationText.remove();
+      window.destinationText = null;
+    }
+    
     console.log("Unit deselected.");
   }
 
   function moveUnitToDestination(unit, dest) {
+    if (unit.owner !== currentPlayer) {
+      alert("You can only move your own units.");
+      return;
+    }
+    
     if (unit.isTraveling) {
       console.log(`Unit ${unit.id} is already moving!`);
       return;
@@ -465,8 +498,8 @@ function findRegionAtPoint(x, y) {
 
   function updateCaptureRegionBtn() {
     const captureBtn = document.getElementById("captureRegionBtn");
-    // Hide button if no unit is selected or the unit is moving
-    if (!selectedUnit || selectedUnit.isTraveling) {
+    
+    if (!selectedUnit || selectedUnit.isTraveling || selectedUnit.owner !== currentPlayer) {
       captureBtn.style.display = "none";
       return;
     }
@@ -499,7 +532,11 @@ function findRegionAtPoint(x, y) {
       return;
     }
     
-    // Prevent capture while the unit is moving.
+    if (selectedUnit.owner !== currentPlayer) {
+      alert("You can only capture a region with your own unit.");
+      return;
+    }
+    
     if (selectedUnit.isTraveling) {
       alert("Unit is currently moving. Cannot capture region while moving.");
       return;
@@ -526,16 +563,13 @@ function findRegionAtPoint(x, y) {
       return;
     }
     
-    // Change the region's color based on the unit's owner
+    // Set region color based on the capturing unit's owner.
     const regionEl = document.getElementById(regionId);
-    let newColor = "gray";
-    if (selectedUnit.owner === "Player1") {
-      newColor = "red";
-    } else if (selectedUnit.owner === "Player2") {
-      newColor = "blue";
-    }
+    const newColor = selectedUnit.owner === "Player1" ? "red"
+                     : selectedUnit.owner === "Player2" ? "blue"
+                     : "gray";
     regionEl.setAttribute("fill", newColor);
-    // Update the base color and store the current owner
+    // Update the region's base color and owning player.
     regionEl.setAttribute("data-base-color", newColor);
     regionEl.setAttribute("data-owner", selectedUnit.owner);
     
