@@ -1,0 +1,50 @@
+body {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+    background-color: #f0f0f0;
+}
+
+#game-board {
+    width: 800px;
+    height: 600px;
+    border: 2px solid #333;
+    background-color: #fff;
+    position: relative;
+    margin: 20px auto;
+    overflow: hidden;
+}
+
+.cell {
+    width: 40px;
+    height: 40px;
+    border: 1px solid #ccc;
+    display: inline-block;
+    box-sizing: border-box;
+}
+
+.cell.active {
+    background-color: #4caf50;
+}
+
+.cell:hover {
+    background-color: #e0e0e0;
+}
+
+.header {
+    text-align: center;
+    margin: 20px 0;
+}
+
+.button {
+    padding: 10px 20px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.button:hover {
+    background-color: #0056b3;
+}
