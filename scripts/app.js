@@ -100,7 +100,6 @@ function handleMoveUnitBtnClick() {
         createSVG(mapData);
         // Remove the incorrect call to tileStats as a function
         // tileStats(mapData);
-        addUnitToRegion("Jutland_01");
         updatePlayerStats();
       })
       .catch(error => console.error("Error loading JSON:", error));
