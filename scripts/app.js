@@ -28,26 +28,19 @@ function handleMoveUnitBtnClick() {
 
 function handleMapContainerClick(event) {
     if (selectedUnit) {
+      const viewport = svg.querySelector("#viewport");
       const point = svg.createSVGPoint();
-      point.x = event.clientX;
-      point.y = event.clientY;
+      const rect = svg.getBoundingClientRect();
+
+      point.x = event.clientX - rect.left;
+      point.y = event.clientY - rect.top;
   
       // Get the transformation matrix applied by svg-pan-zoom
-      const screenCTM = svg.getScreenCTM().inverse();
-  
-      // Transform the point to SVG coordinates
+      const screenCTM = viewport.getScreenCTM().inverse();
       const svgPoint = point.matrixTransform(screenCTM);
   
       destination = { x: svgPoint.x, y: svgPoint.y };
       console.log("Destination selected:", destination);
-  
-      // Draw a test circle at the destination
-      const testCircle = document.createElementNS(svgNS, "circle");
-      testCircle.setAttribute("cx", destination.x);
-      testCircle.setAttribute("cy", destination.y);
-      testCircle.setAttribute("r", 1);
-      testCircle.setAttribute("fill", "yellow");
-      svg.querySelector('#unitsGroup').appendChild(testCircle);
     }
   }
   
@@ -247,63 +240,126 @@ function addUnitToRegion(regionId, owner) {
 }
 
 function selectUnit(unit) {
-  const unitInfoPanel = document.getElementById("unitInfoPanel");
-  unitInfoPanel.style.display = "block";
-  document.getElementById("unitHealth").textContent = `Health: ${unit.health}`;
-  document.getElementById("unitTravelTime").textContent = unit.isTraveling ? `Travel Time: ${unit.travelTime}s` : "Travel Time: -";
-  document.getElementById("unitLocation").textContent = `Location: ${JSON.stringify(unit.position)}`;
-  document.getElementById("moveUnitBtn").style.display = "inline-block";
-  selectedUnit = unit;
-}
-
-function moveSelectedUnitToDestination(dest) {
-  if (!selectedUnit || !dest) return;
-
-  const { x: startX, y: startY } = selectedUnit.position;
-  const { x: endX, y: endY } = dest;
-  const dx = endX - startX;
-  const dy = endY - startY;
-  const totalDistance = Math.sqrt(dx * dx + dy * dy);
-
-  const multiplier = isWater(dest) ? WATER_MULTIPLIER : isEnemyTerritory(dest) ? ENEMY_TERRITORY_MULTIPLIER : 1;
-  const effectiveSpeed = BASE_SPEED * multiplier;
-  const totalTravelTime = totalDistance / effectiveSpeed;
-
-  let startTime = null;
-  function animate(timestamp) {
-    if (!startTime) startTime = timestamp;
-    const elapsed = (timestamp - startTime) / 1000;
-    let t = elapsed / totalTravelTime;
-    if (t > 1) t = 1;
-
-    const currentX = startX + t * dx;
-    const currentY = startY + t * dy;
-    selectedUnit.element.setAttribute("cx", currentX);
-    selectedUnit.element.setAttribute("cy", currentY);
-    selectedUnit.position = { x: currentX, y: currentY };
-    document.getElementById("unitTravelTime").textContent = `Travel Time: ${(totalTravelTime - elapsed).toFixed(1)}s`;
-
-    if (t < 1) {
-      requestAnimationFrame(animate);
-    } else {
-      selectedUnit.isTraveling = false;
-      selectedUnit.travelTime = 0;
-      console.log("Unit reached destination");
-    }
+    const unitInfoPanel = document.getElementById("unitInfoPanel");
+    unitInfoPanel.style.display = "block";
+    document.getElementById("unitHealth").textContent = `Health: ${unit.health}`;
+    document.getElementById("unitTravelTime").textContent = unit.isTraveling ? `Travel Time: ${unit.travelTime}s` : "Travel Time: -";
+  
+    // Determine region or water
+    const regionId = findRegionAtPoint(unit.position.x, unit.position.y);
+    const locationLabel = regionId ? regionId : "Water";
+    document.getElementById("unitLocation").textContent = `Location: ${locationLabel}`;
+  
+    document.getElementById("moveUnitBtn").style.display = "inline-block";
+    selectedUnit = unit;
   }
 
-  selectedUnit.isTraveling = true;
-  selectedUnit.travelTime = totalTravelTime;
-  requestAnimationFrame(animate);
-}
+function moveSelectedUnitToDestination(dest) {
+    if (!selectedUnit || !dest) return;
+  
+    const { x: startX, y: startY } = selectedUnit.position;
+    const { x: endX, y: endY } = dest;
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const totalDistance = Math.sqrt(dx*dx + dy*dy);
+  
+    // Draw a temporary line
+    const line = document.createElementNS(svgNS, "line");
+    line.setAttribute("x1", startX);
+    line.setAttribute("y1", startY);
+    line.setAttribute("x2", endX);
+    line.setAttribute("y2", endY);
+    line.setAttribute("stroke", "yellow");
+    line.setAttribute("stroke-width", "0.1");
+    svg.querySelector("#unitsGroup").appendChild(line);
+    
+    // Prepare incremental movement
+    let distanceTraveled = 0;
+    let lastFrameTime = 0;
+    selectedUnit.isTraveling = true;
+    selectedUnit.travelTime = 0; // Will be updated while moving
+  
+    const directionX = dx / totalDistance;
+    const directionY = dy / totalDistance;
+  
+    function animate(timestamp) {
+      if (!lastFrameTime) lastFrameTime = timestamp;
+      const dt = (timestamp - lastFrameTime) / 1000;
+      lastFrameTime = timestamp;
+  
+      // Check environment at the current position
+      let localSpeed = BASE_SPEED;
+      if (isWater(selectedUnit.position)) {
+        localSpeed *= WATER_MULTIPLIER; // half speed on water
+      } else if (isEnemyTerritory(selectedUnit.position)) {
+        localSpeed *= ENEMY_TERRITORY_MULTIPLIER;
+      }
+  
+      // Move the unit step by step
+      const distanceStep = localSpeed * dt;
+      distanceTraveled += distanceStep;
+  
+      if (distanceTraveled >= totalDistance) {
+        distanceTraveled = totalDistance;
+      }
+  
+      const currentX = startX + directionX * distanceTraveled;
+      const currentY = startY + directionY * distanceTraveled;
+      selectedUnit.element.setAttribute("cx", currentX);
+      selectedUnit.element.setAttribute("cy", currentY);
+      selectedUnit.position = { x: currentX, y: currentY };
 
-function isWater(point) {
-  return false;
-}
+      // Update location label
+      const regionId = findRegionAtPoint(currentX, currentY);
+      const locationLabel = regionId ? regionId : "Water";
+      document.getElementById("unitLocation").textContent = `Location: ${locationLabel}`;
+    
+      // Show remaining travel time in the UI
+      const distanceLeft = totalDistance - distanceTraveled;
+      selectedUnit.travelTime = (distanceLeft / localSpeed).toFixed(1);
+      document.getElementById("unitTravelTime").textContent = `Travel Time: ${selectedUnit.travelTime}s`;
+  
+      if (distanceTraveled < totalDistance) {
+        requestAnimationFrame(animate);
+      } else {
+        // Done traveling
+        selectedUnit.isTraveling = false;
+        selectedUnit.travelTime = 0;
+        line.remove();
+        console.log("Unit reached destination");
+      }
+    }
+  
+    requestAnimationFrame(animate);
+  }
+
+  function isWater(point) {
+    const regionId = findRegionAtPoint(point.x, point.y);
+    if (!regionId) {
+      // If there's no region, treat it as water
+      return true;
+    }
+    const regionData = tileStats[regionId] || {};
+    return regionData.terrain === "water";
+  }
 
 function isEnemyTerritory(point) {
   return false;
 }
+
+function findRegionAtPoint(x, y) {
+    // Searches all regions to see if the point is inside their path
+    const regionPaths = svg.querySelectorAll("#regionsGroup path");
+    const pointObj = svg.createSVGPoint();
+    pointObj.x = x;
+    pointObj.y = y;
+    for (const path of regionPaths) {
+      if (path.isPointInFill(pointObj)) {
+        return path.id;
+      }
+    }
+    return null;
+  }
 
 function updatePlayerStats() {
   document.getElementById("playerUnits").textContent = `Units: ${units.length}`;
