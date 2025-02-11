@@ -25,25 +25,58 @@ function handleMoveUnitBtnClick() {
       alert("Please select a unit and a destination on the map first.");
     }
   }
-  
-function handleMapContainerClick(event) {
+
+  function handleMapContainerClick(event) {
     if (!selectedUnit) {
       console.log("Please select a unit first.");
       return;
     }
+    
+    if (selectedUnit.isTraveling) {
+      console.log("Unit is moving. Cannot set a new destination.");
+      return;
+    }
+    
     const viewport = svg.querySelector("#viewport");
     const point = svg.createSVGPoint();
     const rect = svg.getBoundingClientRect();
-  
+    
     point.x = event.clientX - rect.left;
     point.y = event.clientY - rect.top;
-  
+    
     // Get the transformation matrix applied by svg-pan-zoom
     const screenCTM = viewport.getScreenCTM().inverse();
     const svgPoint = point.matrixTransform(screenCTM);
-  
+    
+    // Set the destination
     destination = { x: svgPoint.x, y: svgPoint.y };
     console.log("Destination selected:", destination);
+    
+    // Remove previous destination marker and text, if any.
+    if (window.destinationMarker) {
+      window.destinationMarker.remove();
+      window.destinationText.remove();
+    }
+    
+    // Create a small yellow dot at the destination.
+    window.destinationMarker = document.createElementNS(svgNS, "circle");
+    window.destinationMarker.setAttribute("cx", destination.x);
+    window.destinationMarker.setAttribute("cy", destination.y);
+    window.destinationMarker.setAttribute("r", 0.5);
+    window.destinationMarker.setAttribute("fill", "yellow");
+    svg.querySelector("#unitsGroup").appendChild(window.destinationMarker);
+    
+    // Calculate estimated travel time from the selected unit to the destination.
+    const travelTime = calculateEstimatedTravelTime(selectedUnit.position, destination);
+    
+    // Create a text element displaying the travel time next to the destination marker.
+    window.destinationText = document.createElementNS(svgNS, "text");
+    window.destinationText.setAttribute("x", destination.x + 1); // offset a bit to the right
+    window.destinationText.setAttribute("y", destination.y - 1); // offset a bit upward
+    window.destinationText.setAttribute("fill", "black");
+    window.destinationText.setAttribute("font-size", "2");
+    window.destinationText.textContent = `${travelTime.toFixed(1)}s`;
+    svg.querySelector("#unitsGroup").appendChild(window.destinationText);
   }
   
   function loadMapData(url) {
@@ -63,6 +96,7 @@ function handleMapContainerClick(event) {
     document.getElementById("tradeBtn").addEventListener("click", () => alert("Trade action triggered!"));
     document.getElementById("moveUnitBtn").addEventListener("click", handleMoveUnitBtnClick);
     document.getElementById("mapContainer").addEventListener("click", handleMapContainerClick);
+    document.getElementById("closeUnitInfoBtn").addEventListener("click", deselectUnit);
   }
   
   
@@ -250,13 +284,33 @@ function selectUnit(unit) {
     document.getElementById("unitLocation").textContent = `Location: ${locationLabel}`;
   
     document.getElementById("moveUnitBtn").style.display = "inline-block";
+    document.getElementById("closeUnitInfoBtn").style.display = "inline-block";
     selectedUnit = unit;
+  }
+
+  function deselectUnit() {
+    selectedUnit = null;
+    const unitInfoPanel = document.getElementById("unitInfoPanel");
+    unitInfoPanel.style.display = "none";
+    // Optionally clear the fields:
+    document.getElementById("unitHealth").textContent = "";
+    document.getElementById("unitTravelTime").textContent = "Travel Time: -";
+    document.getElementById("unitLocation").textContent = "";
+    document.getElementById("moveUnitBtn").style.display = "none";
+    document.getElementById("closeUnitInfoBtn").style.display = "none";
+    console.log("Unit deselected.");
   }
 
   function moveUnitToDestination(unit, dest) {
     if (unit.isTraveling) {
       console.log(`Unit ${unit.id} is already moving!`);
       return;
+    }
+    
+    // Remove destination marker and text as soon as movement starts.
+    if (window.destinationMarker) {
+      window.destinationMarker.remove();
+      window.destinationText.remove();
     }
     
     const { x: startX, y: startY } = unit.position;
@@ -318,7 +372,6 @@ function selectUnit(unit) {
       const distanceLeft = totalDistance - distanceTraveled;
       const remainingTime = distanceLeft / localSpeed;
       unit.travelTime = remainingTime;
-      console.log(`Unit ${unit.id} - Remaining time: ${remainingTime.toFixed(1)}s`);
     
       if (distanceTraveled < totalDistance) {
         requestAnimationFrame(animate);
