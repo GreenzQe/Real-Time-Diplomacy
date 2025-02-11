@@ -1,5 +1,5 @@
 const svgNS = "http://www.w3.org/2000/svg";
-const BASE_SPEED = 1;
+const BASE_SPEED = 100;
 const WATER_MULTIPLIER = 0.5;
 const ENEMY_TERRITORY_MULTIPLIER = 1 / 3;
 
@@ -16,6 +16,9 @@ let playerAlliance = "None";
 let playerGold = 1000;
 let playerSteel = 500;
 let playerAmmo = 300;
+
+// List of unclaimable regions
+const unclaimableRegions = ["Greenland_03", "Northwest_Territories_01", "Northwest_Territories_02", "Yakutsk_01"];
 
 document.addEventListener("DOMContentLoaded", () => {
   updatePlayerStats();
@@ -143,9 +146,15 @@ function handleMoveUnitBtnClick() {
     mapData.regions.forEach(region => {
         const path = document.createElementNS(svgNS, "path");
         path.setAttribute("d", region.path);
-        path.setAttribute("fill", "gray");
+        // Check if the region is unclaimable
+        if (unclaimableRegions.includes(region.id)) {
+          path.setAttribute("fill", "silver");
+          path.setAttribute("data-owner", "Unclaimable");
+        } else {
+          path.setAttribute("fill", "gray");
+        }
         // Store the initial base color
-        path.setAttribute("data-base-color", "gray");
+        path.setAttribute("data-base-color", path.getAttribute("fill"));
         path.setAttribute("stroke", "black");
         path.setAttribute("stroke-width", "0.1");
         path.setAttribute("id", region.id);
@@ -588,6 +597,13 @@ function renderUnit(unit) {
       alert("Your unit is not on a region!");
       return;
     }
+    
+    // Prevent capturing unclaimable regions
+  if (unclaimableRegions.includes(regionId)) {
+    alert("This region cannot be claimed!");
+    return;
+  }
+    
     if (selectedUnit.health < 10) {
       alert("Not enough health to capture the region!");
       return;
