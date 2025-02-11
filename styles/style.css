@@ -48,3 +48,85 @@ body {
 .button:hover {
     background-color: #0056b3;
 }
+
+/* Reset some defaults */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+    font-family: sans-serif;
+  }
+  
+  /* Top info bar */
+  #infoBar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 50px;
+    background-color: #333;
+    color: #000000;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0 10px;
+    z-index: 1000;
+  }
+  
+  /* Unit info panel in the top left */
+  #unitInfoPanel {
+    position: fixed;
+    top: 60px; /* just below the info bar */
+    left: 10px;
+    background-color: rgba(255, 255, 255, 0.9);
+    padding: 10px;
+    border: 1px solid #ccc;
+    z-index: 1000;
+    display: none; /* Initially hidden */
+  }
+  
+  /* Map container fills the space between the top and bottom bars */
+  #mapContainer {
+    position: absolute;
+    top: 50px;
+    bottom: 50px;
+    left: 0;
+    right: 0;
+    background-color: #eee;
+  }
+  
+  /* Bottom menu bar */
+  #menuBar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 50px;
+    background-color: #444;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 0 10px;
+    z-index: 1000;
+  }
+  
+  button {
+    padding: 8px 12px;
+    border: none;
+    border-radius: 4px;
+    background-color: #666;
+    color: #fff;
+    cursor: pointer;
+  }
+  
+  button:hover {
+    background-color: #888;
+  }
