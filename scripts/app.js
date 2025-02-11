@@ -10,9 +10,15 @@ let panZoomInstance;
 let currentZoom = 1;
 let destination = null;
 let selectedUnit = null;
+
 let currentPlayer = "Player1";
+let playerAlliance = "None";
+let playerGold = 1000;
+let playerSteel = 500;
+let playerAmmo = 300;
 
 document.addEventListener("DOMContentLoaded", () => {
+  updatePlayerStats();
   loadMapData("assets/map.json");
   setInterval(updateTime, 1000);
 });
@@ -56,7 +62,11 @@ function handleMoveUnitBtnClick() {
     // Remove previous destination marker and text, if any.
     if (window.destinationMarker) {
       window.destinationMarker.remove();
+      window.destinationMarker = null;
+    }
+    if (window.destinationText) {
       window.destinationText.remove();
+      window.destinationText = null;
     }
     
     // Create a small yellow dot at the destination.
@@ -169,12 +179,38 @@ function switchPlayer() {
     tooltip.style.pointerEvents = "none";
     document.body.appendChild(tooltip);
   
-    svg.querySelectorAll("path").forEach(country => {
-      const regionId = country.id;
-  
-      country.addEventListener("mouseover", event => showTooltip(event, regionId, tooltip));
-      country.addEventListener("mouseleave", () => hideTooltip(tooltip, country));
+    svg.querySelectorAll("path").forEach(region => {
+      const regionId = region.id;
+      region.addEventListener("mouseover", event => showTooltip(event, regionId, tooltip));
+      region.addEventListener("mouseleave", () => hideTooltip(tooltip, region));
+      // Add click event: only select region if no unit is selected.
+      region.addEventListener("click", () => {
+        if (!selectedUnit) {
+          selectRegion(region);
+        }
+      });
     });
+  }
+  
+  function selectRegion(regionElement) {
+    // Get region info from the attributes
+    const regionId = regionElement.id;
+    const owner = regionElement.getAttribute("data-owner") || "Unclaimed";
+    const baseColor = regionElement.getAttribute("data-base-color") || "gray";
+  
+    // Repurpose the unit info panel to display region information
+    const unitInfoPanel = document.getElementById("unitInfoPanel");
+    unitInfoPanel.style.display = "block";
+    document.getElementById("unitHealth").textContent = `Region: ${regionId}`;
+    document.getElementById("unitTravelTime").textContent = `Owner: ${owner}`;
+    document.getElementById("unitLocation").textContent = `Base Color: ${baseColor}`;
+  
+    // Hide buttons that don't apply to regions
+    document.getElementById("moveUnitBtn").style.display = "none";
+    document.getElementById("captureRegionBtn").style.display = "none";
+    document.getElementById("closeUnitInfoBtn").style.display = "inline-block";
+    
+    console.log(`Region ${regionId} clicked. Displaying info panel with region details.`);
   }
 
   function showTooltip(event, regionId, tooltip) {
@@ -451,11 +487,16 @@ function renderUnit(unit) {
     return regionData.terrain === "water";
   }
 
-function isEnemyTerritory(point) {
-  return false;
-}
+  function isEnemyTerritory(point) {
+    const regionId = findRegionAtPoint(point.x, point.y);
+    if (!regionId) return false; // If no region is found, assume it's not enemy territory.
+    const regionEl = document.getElementById(regionId);
+    const regionOwner = regionEl.getAttribute("data-owner") || "Unclaimed";
+    // Consider territory enemy if it's claimed and not owned by the unit's owner.
+    return regionOwner !== "Unclaimed" && regionOwner !== selectedUnit.owner;
+  }
 
-function calculateEstimatedTravelTime(start, dest, segments = 10) {
+  function calculateEstimatedTravelTime(start, dest, segments = 10) {
     const dx = dest.x - start.x;
     const dy = dest.y - start.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
@@ -482,7 +523,7 @@ function calculateEstimatedTravelTime(start, dest, segments = 10) {
     return distance / (BASE_SPEED * averageMultiplier);
   }
 
-function findRegionAtPoint(x, y) {
+  function findRegionAtPoint(x, y) {
     // Searches all regions to see if the point is inside their path
     const regionPaths = svg.querySelectorAll("#regionsGroup path");
     const pointObj = svg.createSVGPoint();
@@ -590,15 +631,23 @@ function findRegionAtPoint(x, y) {
     console.log(`Unit ${unit.id} has died.`);
   }
 
-function updatePlayerStats() {
-  document.getElementById("playerUnits").textContent = `Units: ${units.length}`;
-  document.getElementById("playerGold").textContent = "Gold: 1000";
-  document.getElementById("playerSteel").textContent = "Steel: 500";
-  document.getElementById("playerAmmo").textContent = "Ammo: 300";
-}
+  function updatePlayerStats() {
+    document.getElementById("playerUsername").textContent = `Player: ${currentPlayer}`;
+    document.getElementById("playerAlliance").textContent = `Alliance: ${playerAlliance}`;
+    document.getElementById("playerUnits").textContent = `Units: ${units.length}`;
+    document.getElementById("playerGold").textContent = `Gold: ${playerGold}`;
+    document.getElementById("playerSteel").textContent = `Steel: ${playerSteel}`;
+    document.getElementById("playerAmmo").textContent = `Ammo: ${playerAmmo}`;
+  }
 
 function updateTime() {
   const now = new Date();
   const formatted = now.toLocaleTimeString();
   document.getElementById("currentTime").textContent = `Time: ${formatted}`;
 }
+
+function switchPlayer() {
+    currentPlayer = currentPlayer === "Player1" ? "Player2" : "Player1";
+    console.log("Switched player to:", currentPlayer);
+    updatePlayerStats();
+  }
