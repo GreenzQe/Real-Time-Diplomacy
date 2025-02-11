@@ -1,5 +1,5 @@
 const svgNS = "http://www.w3.org/2000/svg";
-const BASE_SPEED = 100;
+const BASE_SPEED = 1;
 const WATER_MULTIPLIER = 0.5;
 const ENEMY_TERRITORY_MULTIPLIER = 1 / 3;
 
@@ -254,14 +254,21 @@ function selectUnit(unit) {
     selectedUnit = unit;
   }
 
-function moveSelectedUnitToDestination(dest) {
+  function moveSelectedUnitToDestination(dest) {
     if (!selectedUnit || !dest) return;
   
     const { x: startX, y: startY } = selectedUnit.position;
     const { x: endX, y: endY } = dest;
     const dx = endX - startX;
     const dy = endY - startY;
-    const totalDistance = Math.sqrt(dx*dx + dy*dy);
+    const totalDistance = Math.sqrt(dx * dx + dy * dy);
+  
+    // Calculate a better estimated travel time once (using sampling)
+    const estimatedTravelTime = calculateEstimatedTravelTime(selectedUnit.position, dest);
+    // Set the initial display showing the full estimate.
+    document.getElementById("unitTravelTime").textContent = 
+      `Estimated: ${estimatedTravelTime.toFixed(1)}s | Remaining: ${estimatedTravelTime.toFixed(1)}s`;
+    console.log(`Estimated travel time: ${estimatedTravelTime.toFixed(1)}s`);
   
     // Draw a temporary line
     const line = document.createElementNS(svgNS, "line");
@@ -272,12 +279,12 @@ function moveSelectedUnitToDestination(dest) {
     line.setAttribute("stroke", "yellow");
     line.setAttribute("stroke-width", "0.1");
     svg.querySelector("#unitsGroup").appendChild(line);
-    
+  
     // Prepare incremental movement
     let distanceTraveled = 0;
     let lastFrameTime = 0;
     selectedUnit.isTraveling = true;
-    selectedUnit.travelTime = 0; // Will be updated while moving
+    selectedUnit.travelTime = estimatedTravelTime; // initial value
   
     const directionX = dx / totalDistance;
     const directionY = dy / totalDistance;
@@ -287,19 +294,18 @@ function moveSelectedUnitToDestination(dest) {
       const dt = (timestamp - lastFrameTime) / 1000;
       lastFrameTime = timestamp;
   
-      // Check environment at the current position
+      // Check environment (adjusts speed if necessary)
       let localSpeed = BASE_SPEED;
       if (isWater(selectedUnit.position)) {
-        localSpeed *= WATER_MULTIPLIER; // half speed on water
+        localSpeed *= WATER_MULTIPLIER;
       } else if (isEnemyTerritory(selectedUnit.position)) {
         localSpeed *= ENEMY_TERRITORY_MULTIPLIER;
       }
   
-      // Move the unit step by step
+      // Move the unit step-by-step
       const distanceStep = localSpeed * dt;
       distanceTraveled += distanceStep;
-  
-      if (distanceTraveled >= totalDistance) {
+      if (distanceTraveled > totalDistance) {
         distanceTraveled = totalDistance;
       }
   
@@ -308,21 +314,25 @@ function moveSelectedUnitToDestination(dest) {
       selectedUnit.element.setAttribute("cx", currentX);
       selectedUnit.element.setAttribute("cy", currentY);
       selectedUnit.position = { x: currentX, y: currentY };
-
-      // Update location label
+  
+      // Update current location in the info panel
       const regionId = findRegionAtPoint(currentX, currentY);
       const locationLabel = regionId ? regionId : "Water";
       document.getElementById("unitLocation").textContent = `Location: ${locationLabel}`;
-    
-      // Show remaining travel time in the UI
+  
+      // Calculate the remaining (countdown) travel time using current localSpeed
       const distanceLeft = totalDistance - distanceTraveled;
-      selectedUnit.travelTime = (distanceLeft / localSpeed).toFixed(1);
-      document.getElementById("unitTravelTime").textContent = `Travel Time: ${selectedUnit.travelTime}s`;
+      const remainingTime = distanceLeft / localSpeed;
+      selectedUnit.travelTime = remainingTime;
+      
+      // Display both initial estimate and the countdown remaining time
+      document.getElementById("unitTravelTime").textContent =
+        `Estimated: ${estimatedTravelTime.toFixed(1)}s | Remaining: ${remainingTime.toFixed(1)}s`;
   
       if (distanceTraveled < totalDistance) {
         requestAnimationFrame(animate);
       } else {
-        // Done traveling
+        // Cleanup at the end of the movement
         selectedUnit.isTraveling = false;
         selectedUnit.travelTime = 0;
         line.remove();
@@ -346,6 +356,33 @@ function moveSelectedUnitToDestination(dest) {
 function isEnemyTerritory(point) {
   return false;
 }
+
+function calculateEstimatedTravelTime(start, dest, segments = 10) {
+    const dx = dest.x - start.x;
+    const dy = dest.y - start.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    let multiplierSum = 0;
+  
+    // Sample along the path, including both endpoints.
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const samplePoint = {
+        x: start.x + dx * t,
+        y: start.y + dy * t
+      };
+  
+      let multiplier = 1; // Normal land multiplier
+      if (isWater(samplePoint)) {
+        multiplier = WATER_MULTIPLIER;
+      } else if (isEnemyTerritory(samplePoint)) {
+        multiplier = ENEMY_TERRITORY_MULTIPLIER;
+      }
+      multiplierSum += multiplier;
+    }
+  
+    const averageMultiplier = multiplierSum / (segments + 1);
+    return distance / (BASE_SPEED * averageMultiplier);
+  }
 
 function findRegionAtPoint(x, y) {
     // Searches all regions to see if the point is inside their path
