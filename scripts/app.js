@@ -98,7 +98,8 @@ function handleMoveUnitBtnClick() {
       .then(response => response.json())
       .then(mapData => {
         createSVG(mapData);
-        tileStats(mapData);
+        // Remove the incorrect call to tileStats as a function
+        // tileStats(mapData);
         addUnitToRegion("Jutland_01");
         updatePlayerStats();
       })
