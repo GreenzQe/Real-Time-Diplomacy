@@ -1,4 +1,5 @@
 const svgNS = "http://www.w3.org/2000/svg";
+const socket = io();
 const BASE_SPEED = 1;
 const WATER_MULTIPLIER = 0.5;
 const ENEMY_TERRITORY_MULTIPLIER = 1 / 3;
@@ -11,12 +12,20 @@ let panZoomInstance;
 let currentZoom = 1;
 let destination = null;
 let selectedUnit = null;
+let selectedRegion = null;
+let unitIdCounter = 0;  // Global counter for unit IDs
+let unitCreationQueue = [];
 
 let currentPlayer = "Player1";
 let playerAlliance = "None";
 let playerGold = 1000;
 let playerSteel = 500;
 let playerAmmo = 300;
+
+const defaultPlayerColors = {
+  "Player1": "red",
+  "Player2": "blue"
+};
 
 // List of unclaimable regions
 const unclaimableRegions = ["Greenland_03", "Northwest_Territories_01", "Northwest_Territories_02", "Yakutsk_01"];
@@ -33,20 +42,24 @@ if (!playerData) {
   // playerGold = player.gold; playerSteel = player.steel; playerAmmo = player.ammo;
 }
 
+// Then in your event listener:
 document.addEventListener("DOMContentLoaded", () => {
-  updatePlayerStats();
-  loadMapData("assets/map.json");
-  setInterval(updateTime, 1000);
-  // Poll the server for updated game state every 3 seconds
-  setInterval(fetchGameState, 3000);
+  loadMapData("assets/map.json")
+    .then(() => {
+      svg = document.querySelector("svg");    // Initialize svg
+      updatePlayerStats();
+      setInterval(updateTime, 1000);
+      setInterval(fetchGameState, 3000);
+    })
+    .catch(error => console.error("Error initializing game:", error));
 });
 
 async function fetchGameState() {
   try {
     const response = await fetch('/api/game-state');
     const state = await response.json();
-    // Update armies based on server data
-    updateArmies(state.armies);
+    // Update units based on server data
+    updateUnits(state.units);
     // Update regions (like ownership) from the server
     updateRegions(state.regions);
     // (Players data can be used to update UI or for additional logic)
@@ -55,23 +68,28 @@ async function fetchGameState() {
   }
 }
 
-function updateArmies(armiesData) {
-  armiesData.forEach(army => {
-    // Assuming army.id is unique.
-    let renderedArmy = units.find(u => u.id === `${army.id}-unit`);
-    if (renderedArmy) {
+function updateUnits(unitsData) {
+  unitsData.forEach(unit => {
+    // Try to find the unit by matching the server id stored in unit.serverId.
+    let renderedUnit = units.find(u => u.serverId === unit.id);
+
+    if (renderedUnit) {
       // Update position from server data:
-      renderedArmy.position = army.location;
-      if (renderedArmy.element) {
-        renderedArmy.element.setAttribute("cx", army.location.x);
-        renderedArmy.element.setAttribute("cy", army.location.y);
+      renderedUnit.position = unit.location;
+      if (renderedUnit.element) {
+        renderedUnit.element.setAttribute("cx", unit.location.x);
+        renderedUnit.element.setAttribute("cy", unit.location.y);
       }
     } else {
-      // Create and render a new unit if it doesn't exist already.
-      // (You may want to adjust the createUnit logic to use army.id directly.)
-      let newUnit = createUnit(army.id, { x: army.location.x, y: army.location.y }, 100, army.owner);
-      renderUnit(newUnit);
-      units.push(newUnit);
+      // Create a new unit without passing a customId so it gets a unique auto-generated id.
+      let newUnit = createUnit(null, { x: unit.location.x, y: unit.location.y }, 100, unit.owner);
+      // Save the server's unit id for later updates.
+      newUnit.serverId = unit.id;
+      //Instead of this, always use the queue
+      // units.push(newUnit); //Add to the unit array
+      // renderUnit(newUnit);
+      unitCreationQueue.push({regionElement: {id: newUnit.regionId, getBBox: () => {return newUnit.position}}, owner: newUnit.owner});
+
     }
   });
 }
@@ -100,13 +118,18 @@ function updateRegions(regionsData) {
 }
 
 function handleMoveUnitBtnClick() {
-    if (destination && selectedUnit) {
-      moveUnitToDestination(selectedUnit, destination);
-      destination = null;
-    } else {
-      alert("Please select a unit and a destination on the map first.");
-    }
+  if (!selectedUnit) {
+    alert("No unit selected. Please choose a unit first.");
+    return;
   }
+  
+  if (destination) {
+    moveUnitToDestination(selectedUnit, destination);
+    destination = null;
+  } else {
+    alert("Please select a destination on the map first.");
+  }
+}
 
   function handleMapContainerClick(event) {
     if (!selectedUnit) {
@@ -165,79 +188,98 @@ function handleMoveUnitBtnClick() {
     svg.querySelector("#unitsGroup").appendChild(window.destinationText);
   }
   
-  function loadMapData(url) {
-    fetch(url)
-      .then(response => response.json())
-      .then(mapData => {
-        createSVG(mapData);
-        // Remove the incorrect call to tileStats as a function
-        // tileStats(mapData);
-        updatePlayerStats();
-      })
-      .catch(error => console.error("Error loading JSON:", error));
+  // Make loadMapData return a Promise
+function loadMapData(url) {
+  return fetch(url)
+    .then(response => response.json())
+    .then(mapData => {
+      createSVG(mapData);
+      updatePlayerStats();
+    })
+    .catch(error => console.error("Error loading JSON:", error));
+}
+  
+function setupEventListeners() {
+  const createUnitBtn = document.getElementById("createUnitBtn");
+  if (createUnitBtn) {
+      createUnitBtn.addEventListener("click", () => {
+          if (selectedRegion) {
+              console.log("Selected region ID:", selectedRegion.id);
+              addUnitToRegion(selectedRegion, currentPlayer); // Pass currentPlayer!
+              processUnitCreationQueue();
+          } else {
+              alert("Please select a region first.");
+          }
+      });
   }
+  document.getElementById("tradeBtn").addEventListener("click", () => alert("Trade action triggered!"));
+  document.getElementById("moveUnitBtn").addEventListener("click", handleMoveUnitBtnClick);
+  document.getElementById("mapContainer").addEventListener("click", handleMapContainerClick);
+  document.getElementById("closeUnitInfoBtn").addEventListener("click", deselectUnit);
+  document.getElementById("captureRegionBtn").addEventListener("click", captureRegion);
+  document.getElementById("switchPlayerBtn").addEventListener("click", switchPlayer);
+}
   
-  function setupEventListeners() {
-    document.getElementById("createUnitBtn").addEventListener("click", () => addUnitToRegion("Jutland_01"));
-    document.getElementById("tradeBtn").addEventListener("click", () => alert("Trade action triggered!"));
-    document.getElementById("moveUnitBtn").addEventListener("click", handleMoveUnitBtnClick);
-    document.getElementById("mapContainer").addEventListener("click", handleMapContainerClick);
-    document.getElementById("closeUnitInfoBtn").addEventListener("click", deselectUnit);
-    document.getElementById("captureRegionBtn").addEventListener("click", captureRegion);
-    document.getElementById("switchPlayerBtn").addEventListener("click", switchPlayer);
-  }
-  
-  
+function createSVG(mapData) {
+  svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", "100%");
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
 
-  function createSVG(mapData) {
-    svg = document.createElementNS(svgNS, "svg");
-    svg.setAttribute("width", "100%");
-    svg.setAttribute("height", "100%");
-    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
-  
-    // Create a defs element if you use gradients or other definitions
-    const defs = document.createElementNS(svgNS, "defs");
-    svg.appendChild(defs);
-  
-    // Create the viewport group
-    const viewportGroup = document.createElementNS(svgNS, "g");
-    viewportGroup.setAttribute("id", "viewport");
-    svg.appendChild(viewportGroup);
-  
-    // Create regions group inside viewport
-    const regionsGroup = document.createElementNS(svgNS, "g");
-    regionsGroup.setAttribute("id", "regionsGroup");
-    viewportGroup.appendChild(regionsGroup);
-  
-    // Create units group inside viewport
-    const unitsGroup = document.createElementNS(svgNS, "g");
-    unitsGroup.setAttribute("id", "unitsGroup");
-    viewportGroup.appendChild(unitsGroup);
-  
-    // Now create your map regions
-    mapData.regions.forEach(region => {
-        const path = document.createElementNS(svgNS, "path");
-        path.setAttribute("d", region.path);
-        // Check if the region is unclaimable
-        if (unclaimableRegions.includes(region.id)) {
+  // Create viewport and groups first
+  const viewportGroup = document.createElementNS(svgNS, "g");
+  viewportGroup.setAttribute("id", "viewport");
+  svg.appendChild(viewportGroup);
+
+  const unitsGroup = document.createElementNS(svgNS, "g");
+  unitsGroup.setAttribute("id", "unitsGroup");
+  viewportGroup.appendChild(unitsGroup);
+
+  const regionsGroup = document.createElementNS(svgNS, "g");
+  regionsGroup.setAttribute("id", "regionsGroup");
+  viewportGroup.appendChild(regionsGroup);
+
+  // Create regions
+  mapData.regions.forEach(region => {
+      const path = document.createElementNS(svgNS, "path");
+      path.setAttribute("d", region.path);
+      if (unclaimableRegions.includes(region.id)) {
           path.setAttribute("fill", "silver");
           path.setAttribute("data-owner", "Unclaimable");
-        } else {
+      } else {
           path.setAttribute("fill", "gray");
-        }
-        // Store the initial base color
-        path.setAttribute("data-base-color", path.getAttribute("fill"));
-        path.setAttribute("stroke", "black");
-        path.setAttribute("stroke-width", "0.1");
-        path.setAttribute("id", region.id);
-        regionsGroup.appendChild(path);
-      });
-  
-    document.getElementById("mapContainer").appendChild(svg);
-    setupTooltip();
-    setupZoom(); // Ensure this is called here
-    setupEventListeners(); // Ensure this is called here
+      }
+      path.setAttribute("data-base-color", path.getAttribute("fill"));
+      path.setAttribute("stroke", "black");
+      path.setAttribute("stroke-width", "0.1");
+      path.setAttribute("id", region.id);
+      regionsGroup.appendChild(path);
+  });
+
+  // Add SVG to DOM
+  document.getElementById("mapContainer").appendChild(svg);
+
+  // Setup features in correct order
+  setupTooltip();
+  setupZoom();
+  setupEventListeners();
+  console.log("SVG Initialized and event listeners set up");
+
+  processUnitCreationQueue(); // Process queue *immediately* after setup
+}
+
+function processUnitCreationQueue() {
+  while (unitCreationQueue.length > 0) {
+      const { regionElement, owner } = unitCreationQueue.shift();
+      console.log("Processing unit creation from queue. regionElement:", regionElement, "owner:", owner);
+      const bbox = regionElement.getBBox();
+      const centerX = bbox.x + bbox.width / 2;
+      const centerY = bbox.y + bbox.height / 2;
+      const unit = createUnit(regionElement.id, {x: centerX, y: centerY}, 100, owner); //Pass arguments correctly
+      units.push(unit);
+      renderUnit(unit);
   }
+}
   
   // Add this function to switch the current player:
 function switchPlayer() {
@@ -290,8 +332,9 @@ function switchPlayer() {
     document.getElementById("moveUnitBtn").style.display = "none";
     document.getElementById("captureRegionBtn").style.display = "none";
     document.getElementById("closeUnitInfoBtn").style.display = "inline-block";
-    
+  
     console.log(`Region ${regionId} clicked. Displaying info panel with region details.`);
+    selectedRegion = regionElement; // Store the selected region
   }
 
   function showTooltip(event, regionId, tooltip) {
@@ -369,24 +412,48 @@ function setupZoom() {
       center: true,
     });
   }
-  
-  
 
-function createUnit(regionId, position, health, owner) {
-  return {
-    id: `${regionId}-unit`,
-    regionId: regionId,
-    position: position,
-    health: health,
-    owner: owner,
-    element: null,
-    isTraveling: false,
-    travelTime: 0,
-  };
-}
+  function createUnit(regionId, position, health, owner) {
+    return {
+      id: `unit-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      regionId: regionId, // Ensure regionId is correctly set
+      position,
+      health,
+      owner,
+      element: null,
+      isTraveling: false,
+      travelTime: 0,
+    };
+  }
 
-function renderUnit(unit) {
-    const ownerColor = unit.owner === "Player1" ? "red" : unit.owner === "Player2" ? "blue" : "gray";
+  function getPlayerColor(username) {
+    // Try retrieving the player's data from localStorage
+    const storedPlayer = localStorage.getItem("player");
+    if (storedPlayer) {
+      const playerData = JSON.parse(storedPlayer);
+      if (playerData.username === username && playerData.color) {
+        return playerData.color;
+      }
+    }
+    // Otherwise, fall back to default colors.
+    return defaultPlayerColors[username] || "gray";
+  }
+
+  function processUnitCreationQueue() {
+    while (unitCreationQueue.length > 0) {
+      const unitData = unitCreationQueue.shift();
+      renderUnit(unitData);
+    }
+  }
+  
+  function renderUnit(unit) {
+    console.log("renderUnit called with unit:", unit); // Keep this for debugging
+    if (!svg || !document.getElementById("unitsGroup")) { //More robust check
+        console.error("SVG or Units group not initialized yet");
+        return;
+    }
+
+    const ownerColor = getPlayerColor(unit.owner);
     const unitElement = document.createElementNS(svgNS, "circle");
     unitElement.setAttribute("cx", unit.position.x);
     unitElement.setAttribute("cy", unit.position.y);
@@ -394,29 +461,28 @@ function renderUnit(unit) {
     unitElement.setAttribute("fill", ownerColor);
     unitElement.setAttribute("stroke", "black");
     unitElement.setAttribute("stroke-width", "0.1");
-  
+
     const unitsGroup = svg.querySelector("#unitsGroup");
+
     unitsGroup.appendChild(unitElement);
-  
+
     unit.element = unitElement;
     unitElement.addEventListener("click", () => selectUnit(unit));
-  }
-  
 
-  function addUnitToRegion(regionId, owner) {
-    // Default to currentPlayer if no owner is provided.
-    owner = owner || currentPlayer;
-    const region = svg.querySelector(`#${regionId}`);
-    if (region) {
-      const bbox = region.getBBox();
-      const centerX = bbox.x + bbox.width / 2;
-      const centerY = bbox.y + bbox.height / 2;
-      const unit = createUnit(regionId, { x: centerX, y: centerY }, 100, owner);
-      renderUnit(unit);
-      units.push(unit);
-      updatePlayerStats();
-    }
-  }
+    //Emit event after creating and rendering the unit
+    socket.emit("newUnitCreated", {
+        serverId: unit.id,
+        position: unit.position,
+        owner: unit.owner,
+    });
+}
+
+function addUnitToRegion(regionElement, owner) {
+  unitCreationQueue.push({ regionElement, owner }); // *Always* queue
+  console.log("unit creation queued.");
+  return;
+}
+
 
   function selectUnit(unit) {
     if (unit.owner !== currentPlayer) {
@@ -465,6 +531,30 @@ function renderUnit(unit) {
     console.log("Unit deselected.");
   }
 
+  function selectRegion(regionElement) {
+    // Get region info from the attributes
+    const regionId = regionElement.id;
+    console.log("Selected region ID:", regionId); // Debugging statement
+    const owner = regionElement.getAttribute("data-owner") || "Unclaimed";
+    const baseColor = regionElement.getAttribute("data-base-color") || "gray";
+  
+    // Repurpose the unit info panel to display region information
+    const unitInfoPanel = document.getElementById("unitInfoPanel");
+    unitInfoPanel.style.display = "block";
+    document.getElementById("unitHealth").textContent = `Region: ${regionId}`;
+    document.getElementById("unitTravelTime").textContent = `Owner: ${owner}`;
+    document.getElementById("unitLocation").textContent = `Base Color: ${baseColor}`;
+  
+    // Hide buttons that don't apply to regions
+    document.getElementById("moveUnitBtn").style.display = "none";
+    document.getElementById("captureRegionBtn").style.display = "none";
+    document.getElementById("closeUnitInfoBtn").style.display = "inline-block";
+  
+    console.log(`Region ${regionId} clicked. Displaying info panel with region details.`);
+    selectedRegion = regionElement; // Store the selected region
+    console.log("Selected region:", selectedRegion); // Debugging statement
+  }
+
   function moveUnitToDestination(unit, dest) {
     if (unit.owner !== currentPlayer) {
       alert("You can only move your own units.");
@@ -476,7 +566,6 @@ function renderUnit(unit) {
       return;
     }
     
-    // Hide the MoveUnit and CaptureRegion buttons as soon as movement begins
     document.getElementById("moveUnitBtn").style.display = "none";
     document.getElementById("captureRegionBtn").style.display = "none";
     
@@ -493,6 +582,13 @@ function renderUnit(unit) {
     
     const estimatedTravelTime = calculateEstimatedTravelTime(unit.position, dest, unit);
     console.log(`Estimated travel time for ${unit.id}: ${estimatedTravelTime.toFixed(1)}s`);
+    
+    socket.emit("moveUnit", {
+      unitId: unit.serverId || unit.id,
+      currentPosition: { x: unit.position.x, y: unit.position.y },
+      estimatedTravelTime: unit.travelTime,
+      owner: unit.owner
+    });
     
     const line = document.createElementNS(svgNS, "line");
     line.setAttribute("x1", startX);
@@ -538,6 +634,12 @@ function renderUnit(unit) {
         unit.element.setAttribute("cy", currentY);
       }
       
+      socket.emit("moveUnit", {
+        unitId: unit.serverId || unit.id,
+        currentPosition: { x: currentX, y: currentY },
+        estimatedTravelTime: unit.travelTime
+      });
+      
       const distanceLeft = totalDistance - distanceTraveled;
       const remainingTime = distanceLeft / localSpeed;
       unit.travelTime = remainingTime;
@@ -549,15 +651,89 @@ function renderUnit(unit) {
         unit.travelTime = 0;
         line.remove();
         console.log(`Unit ${unit.id} reached destination`);
-        // Show the MoveUnit button again
         document.getElementById("moveUnitBtn").style.display = "inline-block";
-        // Update the CaptureRegion button based on the new location
         updateCaptureRegionBtn();
       }
     }
     
     requestAnimationFrame(animate);
   }
+
+  socket.on("moveUnit", (data) => {
+    console.log("moveUnit event received:", data);
+
+    let movingUnit = units.find(u => (u.serverId || u.id) === data.unitId);
+
+    if (!movingUnit) {
+      console.log("No unit found with identifier:", data.unitId, "- creating placeholder unit.");
+      movingUnit = createUnit(null, data.currentPosition, 100, data.owner);
+      movingUnit.serverId = data.unitId;
+      renderUnit(movingUnit);
+      units.push(movingUnit);
+    }
+
+    if (data.currentPosition) {
+      movingUnit.position = data.currentPosition;
+      if (movingUnit.element) {
+        movingUnit.element.setAttribute("cx", data.currentPosition.x);
+        movingUnit.element.setAttribute("cy", data.currentPosition.y);
+      }
+      console.log(`Updated unit ${movingUnit.id} position to:`, data.currentPosition);
+    }
+  });
+
+  socket.on("newUnitCreated", (data) => {
+    const newUnit = createUnit(null, data.position, 100, data.owner); // No regionId needed here
+    newUnit.serverId = data.serverId;
+    units.push(newUnit);  // Add to units array *before* rendering
+    renderUnit(newUnit);  // Now render the unit
+});
+
+socket.on("bulkUnitsData", (data) => {
+  data.forEach((unit) => {
+    //No unit should be created until the SVG is initialized.
+    const newUnit = {
+        id: unit.id, //Use the id provided by the server
+        regionId: null, //bulk data does not carry region ID
+        position: unit.location,
+        health: 100,
+        owner: unit.owner,
+        element: null,
+        isTraveling: false,
+        travelTime: 0,
+        serverId: unit.id
+    }
+
+    //Instead of this, always queue the units.
+    // units.push(newUnit);
+    // if(svgInitialized){
+    //   renderUnit(newUnit)
+    // } else {
+    //   unitCreationQueue.push({regionElement: {id: unit.regionId, getBBox: () => {return newUnit.position}}, owner: newUnit.owner})
+    // }
+      unitCreationQueue.push({regionElement: {id: unit.regionId, getBBox: () => {return newUnit.position}}, owner: newUnit.owner});
+  });
+});
+
+  socket.on("bulkRegionsData", (data) => {
+    data.forEach((region) => {
+      const regionEl = document.getElementById(region.id);
+      const newColor = region.owner === "Player1" ? "red"
+                    : region.owner === "Player2" ? "blue"
+                    : "gray";
+      regionEl.setAttribute("fill", newColor);
+      regionEl.setAttribute("data-owner", region.owner);
+    });
+  });
+
+  socket.on("regionCaptured", (data) => {
+    const regionEl = document.getElementById(data.regionId);
+    const newColor = data.newOwner === "Player1" ? "red"
+                  : data.newOwner === "Player2" ? "blue"
+                  : "gray";
+    regionEl.setAttribute("fill", newColor);
+    regionEl.setAttribute("data-owner", data.newOwner);
+  });
 
   function isWater(point) {
     const regionId = findRegionAtPoint(point.x, point.y);
@@ -680,37 +856,37 @@ function renderUnit(unit) {
       return;
     }
     
-    // Prevent capturing unclaimable regions
-  if (unclaimableRegions.includes(regionId)) {
-    alert("This region cannot be claimed!");
-    return;
-  }
+    if (unclaimableRegions.includes(regionId)) {
+      alert("This region cannot be claimed!");
+      return;
+    }
     
     if (selectedUnit.health < 10) {
       alert("Not enough health to capture the region!");
       return;
     }
     
-    // Deduct 10 health from the unit
     selectedUnit.health -= 10;
     document.getElementById("unitHealth").textContent = `Health: ${selectedUnit.health}`;
     
-    // If health falls under 10, the unit dies.
     if (selectedUnit.health < 1) {
       killUnit(selectedUnit);
       alert(`Unit ${selectedUnit.id} has died.`);
       return;
     }
     
-    // Set region color based on the capturing unit's owner.
     const regionEl = document.getElementById(regionId);
     const newColor = selectedUnit.owner === "Player1" ? "red"
                      : selectedUnit.owner === "Player2" ? "blue"
                      : "gray";
     regionEl.setAttribute("fill", newColor);
-    // Update the region's base color and owning player.
     regionEl.setAttribute("data-base-color", newColor);
     regionEl.setAttribute("data-owner", selectedUnit.owner);
+  
+    socket.emit("regionCaptured", {
+      regionId,
+      newOwner: selectedUnit.owner
+    });
     
     console.log(`Region ${regionId} captured by ${selectedUnit.owner}.`);
   }

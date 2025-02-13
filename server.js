@@ -1,50 +1,27 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const http = require('http');
+const { Server } = require("socket.io");
+
 const app = express();
 const port = 3000;
 
-app.use(cors()); // Allow all origins
+app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
 // Dummy database for sample purposes.
-let players = [
-  {
-    id: 1,
-    username: 'Player1',
-    password: 'pass1',
-    steel: 500,
-    gold: 1000,
-    ammo: 300
-  },
-  {
-    id: 2,
-    username: 'Player2',
-    password: 'pass2',
-    steel: 400,
-    gold: 900,
-    ammo: 250
-  }
+const players = [
+  { id: 1, username: 'Player1', password: 'pass1', steel: 500, gold: 1000, ammo: 300, color: 'red' },
+  { id: 2, username: 'Player2', password: 'pass2', steel: 400, gold: 900, ammo: 250, color: 'blue' }
 ];
 
-let armies = [
-  // Army: ID, Location, and Direction.
-  { id: 1, location: { x: 50, y: 50 }},
-  { id: 2, location: { x: 100, y: 100 }}
-];
+let units = [];
 
-let regions = [
-  // Region: ID, Owner, HasMine.
-  { id: 'Jutland_01', owner: 'Player1', hasMine: false },
-  { id: 'Jutland_02', owner: 'Player1', hasMine: false },
-  { id: 'Greenland_03', owner: 'Unclaimable', hasMine: true }
-];
+let regions = [];
 
-app.use(bodyParser.json());
-app.use(express.static('public')); // Place your static HTML/JS files in a "public" folder
-
-// POST /api/login
+// POST /api/login: basic login endpoint.
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
   const player = players.find(p => p.username === username && p.password === password);
@@ -55,37 +32,56 @@ app.post('/api/login', (req, res) => {
   }
 });
 
-// GET /api/game-state returns army, player, and region data.
+// GET /api/game-state: returns the current state of players, units, and regions.
 app.get('/api/game-state', (req, res) => {
-  res.json({ players, armies, regions });
+  res.json({ players, units, regions });
 });
 
-// Example endpoint to update an army.
-app.post('/api/army/update', (req, res) => {
-  const { id, location, direction } = req.body;
-  const army = armies.find(a => a.id === id);
-  if (army) {
-    army.location = location;
-    army.direction = direction;
-    res.json({ success: true, army });
-  } else {
-    res.json({ success: false, message: 'Army not found' });
-  }
+//----- Socket.IO Setup -----//
+const server = http.createServer(app);
+const io = new Server(server);
+
+io.on("connection", (socket) => {
+  console.log("A user connected:", socket.id);
+  
+  // Send the current state to the new client.
+  socket.emit("bulkUnitsData", units);
+  socket.emit("bulkRegionsData", regions);
+  
+  // Listen for new unit creation.
+socket.on("newUnitCreated", (data) => {
+  const newUnit = {
+    id: data.serverId,
+    location: data.position,
+    owner: data.owner
+  };
+  units.push(newUnit);
+  io.emit("newUnitCreated", data); // Broadcast to ALL clients
+});
+  
+  // Listen for unit movement.
+  socket.on("moveUnit", (data) => {
+    const unit = units.find(u => u.id === data.unitId);
+    if (unit) {
+      unit.location = data.currentPosition;
+      io.emit("moveUnit", data);
+    }
+  });
+  
+  // Listen for region capture events.
+  socket.on("regionCaptured", (data) => {
+    const region = regions.find(r => r.id === data.regionId);
+    if (region) {
+      region.owner = data.newOwner;
+      io.emit("regionCaptured", data);
+    }
+  });
+  
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id);
+  });
 });
 
-// Example endpoint to update a region.
-app.post('/api/region/update', (req, res) => {
-  const { id, owner, hasMine } = req.body;
-  const region = regions.find(r => r.id === id);
-  if (region) {
-    region.owner = owner;
-    region.hasMine = hasMine;
-    res.json({ success: true, region });
-  } else {
-    res.json({ success: false, message: 'Region not found' });
-  }
-});
-
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);
 });
