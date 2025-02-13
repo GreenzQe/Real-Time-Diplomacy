@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Diplomacy - Game Interface</title>
+    <script src="https://unpkg.com/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+    <script src="scripts/app.js" defer></script>
+    <link rel="stylesheet" href="styles/style.css" />
+    <link rel="icon" href="assets/favicon.ico" type="image/x-icon" />
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 0;
+        }
+
+        #infoBar, #unitInfoPanel, #menuBar {
+            position: absolute;
+            z-index: 1;
+            background: rgba(255, 255, 255, 0.8); /* Slightly transparent background */
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #infoBar {
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        #unitInfoPanel {
+            bottom: 100px;
+            left: 10px;
+        }
+
+        #menuBar {
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        #mapContainer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Info Bar -->
+    <div id="infoBar">
+      <span id="playerUsername">Player: Alice</span>
+      <span id="playerAlliance">Alliance: None</span>
+      <span id="playerUnits">Units: 0</span>
+      <span id="playerGold">Gold: 1000</span>
+      <span id="playerSteel">Steel: 500</span>
+      <span id="playerAmmo">Ammo: 300</span>
+      <span id="currentTime">Time: --:--</span>
+    </div>
+
+    <!-- Unit Info Panel (hidden by default) -->
+    <div id="unitInfoPanel">
+      <p id="unitHealth">Health: --</p>
+      <p id="unitTravelTime">Travel Time: --</p>
+      <p id="unitLocation">Location: --</p>
+    </div>
+
+    <!-- Map Container (SVG will be appended here) -->
+    <div id="mapContainer">
+        <!-- SVG content will be appended here -->
+        <svg></svg>
+    </div>
+
+    <!-- Bottom Menu Bar -->
+    <div id="menuBar">
+      <button id="switchPlayerBtn">Switch</button>
+      <button id="createUnitBtn">Create Unit</button>
+      <button id="tradeBtn">Trade</button>
+      <!-- The move button is hidden until a unit is selected -->
+      <button id="closeUnitInfoBtn" style="display: none;" >Unselect</button>
+      <button id="moveUnitBtn" style="display: none;">Move Unit</button>
+      <button id="captureRegionBtn" style="display: none;">Capture Region</button>
+    </div>
+</body>
+</html>
