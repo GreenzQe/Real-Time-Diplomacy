@@ -1,7 +1,8 @@
 const svgNS = "http://www.w3.org/2000/svg";
-const BASE_SPEED = 100;
+const BASE_SPEED = 0.1;
 const WATER_MULTIPLIER = 0.5;
 const ENEMY_TERRITORY_MULTIPLIER = 1 / 3;
+const OWNED_TERRITORY_MULTIPLIER = 2;
 
 let svg;
 let tileStats = {};
@@ -449,6 +450,8 @@ function renderUnit(unit) {
         localSpeed *= WATER_MULTIPLIER;
       } else if (isEnemyTerritory(unit.position)) {
         localSpeed *= ENEMY_TERRITORY_MULTIPLIER;
+      } else if (isOwnedTerritory(unit.position)) {
+        localSpeed *= OWNED_TERRITORY_MULTIPLIER;
       }
       
       const distanceStep = localSpeed * dt;
@@ -505,6 +508,15 @@ function renderUnit(unit) {
     return regionOwner !== "Unclaimed" && regionOwner !== selectedUnit.owner;
   }
 
+  function isOwnedTerritory(point) {
+    const regionId = findRegionAtPoint(point.x, point.y);
+    if (!regionId) return false; // No region, not applicable.
+    const regionEl = document.getElementById(regionId);
+    const regionOwner = regionEl.getAttribute("data-owner") || "Unclaimed";
+    // Territory is "owned" if it's claimed and owned by the selected unit's owner.
+    return regionOwner !== "Unclaimed" && regionOwner === selectedUnit.owner;
+  }
+
   function calculateEstimatedTravelTime(start, dest, segments = 10) {
     const dx = dest.x - start.x;
     const dy = dest.y - start.y;
@@ -524,6 +536,8 @@ function renderUnit(unit) {
         multiplier = WATER_MULTIPLIER;
       } else if (isEnemyTerritory(samplePoint)) {
         multiplier = ENEMY_TERRITORY_MULTIPLIER;
+      } else if (isOwnedTerritory(samplePoint)) {  // new check
+        multiplier = OWNED_TERRITORY_MULTIPLIER;
       }
       multiplierSum += multiplier;
     }
