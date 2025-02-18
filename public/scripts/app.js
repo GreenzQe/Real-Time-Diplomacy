@@ -58,41 +58,82 @@ async function fetchGameState() {
   try {
     const response = await fetch('/api/game-state');
     const state = await response.json();
+
+    if (!Array.isArray(state.units)) {
+      console.error("Invalid units data from the server:", state.units);
+      return;
+    }
+
     // Update units based on server data
     updateUnits(state.units);
     // Update regions (like ownership) from the server
     updateRegions(state.regions);
-    // (Players data can be used to update UI or for additional logic)
   } catch (error) {
     console.error("Error fetching game state:", error);
   }
 }
 
+function getRegionId(regionReference) {
+  if (typeof regionReference === "object" && regionReference !== null) {
+    // Log what kind of object we're dealing with
+    console.log("Region reference is an object:", regionReference);
+    if (regionReference.id) {
+      return regionReference.id;
+    } else {
+      console.error("Region object received but no 'id' property exists", regionReference);
+      return "";
+    }
+  }
+  return regionReference;
+}
+
+
 function updateUnits(unitsData) {
   unitsData.forEach(unit => {
-    // Try to find the unit by matching the server id stored in unit.serverId.
-    let renderedUnit = units.find(u => u.serverId === unit.id);
+    if (!unit.location || typeof unit.location.x !== 'number' || typeof unit.location.y !== 'number') {
+      console.error("Invalid unit location received from server:", unit);
+      return; // Skip invalid units
+    }
 
+    let renderedUnit = units.find(u => u.serverId === unit.id);
     if (renderedUnit) {
-      // Update position from server data:
       renderedUnit.position = unit.location;
       if (renderedUnit.element) {
         renderedUnit.element.setAttribute("cx", unit.location.x);
         renderedUnit.element.setAttribute("cy", unit.location.y);
       }
     } else {
-      // Create a new unit without passing a customId so it gets a unique auto-generated id.
-      let newUnit = createUnit(null, { x: unit.location.x, y: unit.location.y }, 100, unit.owner);
-      // Save the server's unit id for later updates.
-      newUnit.serverId = unit.id;
-      //Instead of this, always use the queue
-      // units.push(newUnit); //Add to the unit array
-      // renderUnit(newUnit);
-      unitCreationQueue.push({regionElement: {id: newUnit.regionId, getBBox: () => {return newUnit.position}}, owner: newUnit.owner});
+      const position = { x: unit.location.x, y: unit.location.y };
+      const newUnit = createUnit(null, position, 100, unit.owner);
 
+      // Log what we get for regionId
+      console.log("newUnit.regionId (raw):", newUnit.regionId, "Type:", typeof newUnit.regionId);
+
+      // Use the helper function to force extraction of a plain string
+      const regionId = getRegionId(newUnit.regionId || unit.regionId);
+      console.log("Extracted regionId:", regionId, "Type:", typeof regionId);
+
+      if (typeof regionId !== "string") {
+        console.error("Expected a string for regionId but got:", regionId);
+        return;
+      }
+
+      const regionElement = document.getElementById(regionId);
+      if (!regionElement) {
+        console.error("Region element not found for ID:", regionId);
+        return;
+      }
+
+      unitCreationQueue.push({
+        position: newUnit.position,
+        regionElement: regionElement,
+        owner: newUnit.owner
+      });
     }
   });
 }
+
+
 
 function updateRegions(regionsData) {
   regionsData.forEach(region => {
@@ -268,29 +309,6 @@ function createSVG(mapData) {
   processUnitCreationQueue(); // Process queue *immediately* after setup
 }
 
-function processUnitCreationQueue() {
-  while (unitCreationQueue.length > 0) {
-      const { regionElement, owner } = unitCreationQueue.shift();
-      console.log("Processing unit creation from queue. regionElement:", regionElement, "owner:", owner);
-      const bbox = regionElement.getBBox();
-      const centerX = bbox.x + bbox.width / 2;
-      const centerY = bbox.y + bbox.height / 2;
-      const unit = createUnit(regionElement.id, {x: centerX, y: centerY}, 100, owner); //Pass arguments correctly
-      units.push(unit);
-      renderUnit(unit);
-  }
-}
-  
-  // Add this function to switch the current player:
-function switchPlayer() {
-    currentPlayer = currentPlayer === "Player1" ? "Player2" : "Player1";
-    console.log("Switched player to:", currentPlayer);
-    const playerDisplay = document.getElementById("currentPlayer");
-    if (playerDisplay) {
-      playerDisplay.textContent = `Current Player: ${currentPlayer}`;
-    }
-  }
-
   function setupTooltip() {
     const tooltip = document.createElement("div");
     tooltip.style.position = "absolute";
@@ -313,28 +331,6 @@ function switchPlayer() {
         }
       });
     });
-  }
-  
-  function selectRegion(regionElement) {
-    // Get region info from the attributes
-    const regionId = regionElement.id;
-    const owner = regionElement.getAttribute("data-owner") || "Unclaimed";
-    const baseColor = regionElement.getAttribute("data-base-color") || "gray";
-  
-    // Repurpose the unit info panel to display region information
-    const unitInfoPanel = document.getElementById("unitInfoPanel");
-    unitInfoPanel.style.display = "block";
-    document.getElementById("unitHealth").textContent = `Region: ${regionId}`;
-    document.getElementById("unitTravelTime").textContent = `Owner: ${owner}`;
-    document.getElementById("unitLocation").textContent = `Base Color: ${baseColor}`;
-  
-    // Hide buttons that don't apply to regions
-    document.getElementById("moveUnitBtn").style.display = "none";
-    document.getElementById("captureRegionBtn").style.display = "none";
-    document.getElementById("closeUnitInfoBtn").style.display = "inline-block";
-  
-    console.log(`Region ${regionId} clicked. Displaying info panel with region details.`);
-    selectedRegion = regionElement; // Store the selected region
   }
 
   function showTooltip(event, regionId, tooltip) {
@@ -413,18 +409,21 @@ function setupZoom() {
     });
   }
 
-  function createUnit(regionId, position, health, owner) {
-    return {
-      id: `unit-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-      regionId: regionId, // Ensure regionId is correctly set
-      position,
-      health,
-      owner,
-      element: null,
-      isTraveling: false,
-      travelTime: 0,
-    };
+function createUnit(customId, position, health, owner) {
+  if (!position || position.x === undefined || position.y === undefined) {
+    console.error("Invalid position data for new unit:", position);
+    return null; // Prevent creation of invalid unit
   }
+
+  return {
+    id: customId || generateUniqueId(), // Generate unique ID if not provided
+    position: position,                 // Store the position directly
+    health: health || 100,
+    owner: owner || "Unknown",
+    regionId: null,                     // Placeholder; can update this based on your regions logic
+    element: null                       // SVG element placeholder
+  };
+}
 
   function getPlayerColor(username) {
     // Try retrieving the player's data from localStorage
@@ -439,48 +438,42 @@ function setupZoom() {
     return defaultPlayerColors[username] || "gray";
   }
 
-  function processUnitCreationQueue() {
-    while (unitCreationQueue.length > 0) {
-      const unitData = unitCreationQueue.shift();
-      renderUnit(unitData);
+function processUnitCreationQueue() {
+  while (unitCreationQueue.length > 0) {
+    const queueItem = unitCreationQueue.shift();
+
+    // Check if the position exists and has valid x and y properties
+    if (!queueItem.position || queueItem.position.x === undefined || queueItem.position.y === undefined) {
+      console.error("Invalid queued unit (missing position):", queueItem);
+      continue;
     }
+
+    // Proceed with processing the valid unit
+    renderUnit(queueItem);
   }
-  
-  function renderUnit(unit) {
-    console.log("renderUnit called with unit:", unit); // Keep this for debugging
-    if (!svg || !document.getElementById("unitsGroup")) { //More robust check
-        console.error("SVG or Units group not initialized yet");
-        return;
-    }
-
-    const ownerColor = getPlayerColor(unit.owner);
-    const unitElement = document.createElementNS(svgNS, "circle");
-    unitElement.setAttribute("cx", unit.position.x);
-    unitElement.setAttribute("cy", unit.position.y);
-    unitElement.setAttribute("r", 0.5);
-    unitElement.setAttribute("fill", ownerColor);
-    unitElement.setAttribute("stroke", "black");
-    unitElement.setAttribute("stroke-width", "0.1");
-
-    const unitsGroup = svg.querySelector("#unitsGroup");
-
-    unitsGroup.appendChild(unitElement);
-
-    unit.element = unitElement;
-    unitElement.addEventListener("click", () => selectUnit(unit));
-
-    //Emit event after creating and rendering the unit
-    socket.emit("newUnitCreated", {
-        serverId: unit.id,
-        position: unit.position,
-        owner: unit.owner,
-    });
 }
+
+function renderUnit(unit) {
+  if (!unit || !unit.position || unit.position.x === undefined || unit.position.y === undefined) {
+    console.error("Invalid unit passed to renderUnit:", unit);
+    return; // Skip rendering invalid units
+  }
+
+  const unitElement = document.createElementNS(svgNS, "circle");
+  unitElement.setAttribute("cx", unit.position.x);
+  unitElement.setAttribute("cy", unit.position.y);
+  unitElement.setAttribute("r", 5); // Example size
+  unitElement.setAttribute("fill", unit.owner === "Player1" ? "red" : "blue"); // Set owner-specific colors
+
+  unit.element = unitElement;
+  svg.appendChild(unitElement);
+}
+
 
 function addUnitToRegion(regionElement, owner) {
   unitCreationQueue.push({ regionElement, owner }); // *Always* queue
   console.log("unit creation queued.");
-  return;
+
 }
 
 
@@ -641,8 +634,7 @@ function addUnitToRegion(regionElement, owner) {
       });
       
       const distanceLeft = totalDistance - distanceTraveled;
-      const remainingTime = distanceLeft / localSpeed;
-      unit.travelTime = remainingTime;
+      unit.travelTime = distanceLeft / localSpeed;
       
       if (distanceTraveled < totalDistance) {
         requestAnimationFrame(animate);
@@ -691,27 +683,46 @@ function addUnitToRegion(regionElement, owner) {
 
 socket.on("bulkUnitsData", (data) => {
   data.forEach((unit) => {
-    //No unit should be created until the SVG is initialized.
-    const newUnit = {
-        id: unit.id, //Use the id provided by the server
-        regionId: null, //bulk data does not carry region ID
-        position: unit.location,
-        health: 100,
-        owner: unit.owner,
-        element: null,
-        isTraveling: false,
-        travelTime: 0,
-        serverId: unit.id
+    // Normalize the region id (remove extra whitespace, etc.)
+    const normalizedId = unit.regionId.trim();
+
+    // Attempt to locate the SVG element with the normalized id
+    const regionElement = document.getElementById(normalizedId);
+    if (!regionElement) {
+      console.error(`No SVG element found with id "${normalizedId}" for unit region "${unit.regionId}"`);
+    } else {
+      console.log(`Found SVG element with id "${regionElement.id}" for unit region "${unit.regionId}"`);
     }
 
-    //Instead of this, always queue the units.
-    // units.push(newUnit);
-    // if(svgInitialized){
-    //   renderUnit(newUnit)
-    // } else {
-    //   unitCreationQueue.push({regionElement: {id: unit.regionId, getBBox: () => {return newUnit.position}}, owner: newUnit.owner})
-    // }
-      unitCreationQueue.push({regionElement: {id: unit.regionId, getBBox: () => {return newUnit.position}}, owner: newUnit.owner});
+    // Use a safe version of the region element (fallback if the actual element isn't found)
+    const safeRegionElement = regionElement || {
+      id: normalizedId,
+      getBBox: () => ({ x: 0, y: 0 })
+    };
+
+    // Compute fallback position using getBBox() if available
+    let fallbackPosition = { x: 0, y: 0 };
+    if (typeof safeRegionElement.getBBox === 'function') {
+      fallbackPosition = safeRegionElement.getBBox();
+    }
+    console.log("Computed fallback position using getBBox():", fallbackPosition);
+
+    // Use unit.location if available and valid; otherwise, default to the fallback
+    const computedPosition = unit.location && typeof unit.location.x === 'number' && typeof unit.location.y === 'number'
+        ? unit.location
+        : { x: fallbackPosition.x, y: fallbackPosition.y };
+
+    console.log("Final computed position:", computedPosition);
+
+    // Queue a new unit object with the computed position
+    const queuedUnit = {
+      position: computedPosition,
+      regionElement: safeRegionElement,
+      owner: unit.owner
+    };
+
+    console.log("Unit queued:", queuedUnit);
+    unitCreationQueue.push(queuedUnit);
   });
 });
 
