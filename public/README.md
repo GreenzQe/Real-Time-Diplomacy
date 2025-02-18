@@ -27,9 +27,7 @@ Take over tiles with army’s and ammunition
 
 ### Resource based alliances
 
-Trade - trade alliance
-
-Fog of war - intelligence alliance 
+Trade - econimical alliance
 
 Borders & Army's - military alliance 
 
