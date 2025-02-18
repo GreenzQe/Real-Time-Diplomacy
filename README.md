@@ -7,8 +7,6 @@ A Browser based real time Diplomacy like
 Made in Javascript
 
 
-Ammunition - Weapons manufacturers 
-
 Steel - Steel mills / factories 
 
 Gold - Taxes (Population based)
@@ -21,9 +19,7 @@ Create army’s with steel
 
 Buy army’s with gold
 
-Attack army’s with ammunition 
-
-Take over tiles with army’s and ammunition
+Take over tiles with your army
 
 ### Resource based alliances
 
