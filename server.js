@@ -14,6 +14,7 @@ let players = [
     id: 1,
     username: 'Player1',
     password: 'pass1',
+    color: 'red',
     steel: 500,
     gold: 1000,
     ammo: 300
@@ -22,23 +23,39 @@ let players = [
     id: 2,
     username: 'Player2',
     password: 'pass2',
-    steel: 400,
-    gold: 900,
-    ammo: 250
+    color: 'blue',
+    steel: 500,
+    gold: 1000,
+    ammo: 300
+  },
+  {
+    id: 3,
+    username: 'Player3',
+    password: 'pass3',
+    color: 'green',
+    steel: 500,
+    gold: 1000,
+    ammo: 300
   }
 ];
 
 let armies = [
   // Army: ID, Location, and Direction.
-  { id: 1, location: { x: 50, y: 50 }},
-  { id: 2, location: { x: 100, y: 100 }}
 ];
 
 let regions = [
   // Region: ID, Owner, HasMine.
   { id: 'Jutland_01', owner: 'Player1', hasMine: false },
   { id: 'Jutland_02', owner: 'Player1', hasMine: false },
-  { id: 'Greenland_03', owner: 'Unclaimable', hasMine: true }
+  { id: 'Jutland_03', hasMine: true },
+  { id: 'Greenland_03', owner: 'Unclaimable', hasMine: false },
+  { id: 'Northwest_Territories_01', owner: 'Unclaimable', hasMine: false},
+  { id: 'Northwest_Territories_02', owner: 'Unclaimable', hasMine: false},
+  { id: 'Yakutsk_01', owner: 'Unclaimable', hasMine: false},
+  { id: 'Scania_02', owner: 'Player2', hasMine: false },
+  { id: 'Scania_03', owner: 'Player2', hasMine: false },
+  { id: 'Scania_04', owner: 'Player2', hasMine: false },
+  { id: 'Scania_08', owner: 'Player3', hasMine: false }
 ];
 
 app.use(bodyParser.json());

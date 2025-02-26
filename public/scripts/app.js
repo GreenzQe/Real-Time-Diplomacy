@@ -87,6 +87,8 @@ function updateRegions(regionsData) {
           ? "red"
           : region.owner === "Player2"
           ? "blue"
+          : region.owner === "Player3"
+          ? "green"
           : "gray";
       regionEl.setAttribute("fill", newColor);
       regionEl.setAttribute("data-base-color", newColor);
