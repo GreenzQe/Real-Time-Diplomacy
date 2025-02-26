@@ -45,13 +45,6 @@ let armies = [
 
 let regions = [
   // Region: ID, Owner, HasMine.
-  { id: 'Jutland_01', owner: 'Player1', hasMine: false },
-  { id: 'Jutland_02', owner: 'Player1', hasMine: false },
-  { id: 'Jutland_03', hasMine: true },
-  { id: 'Greenland_03', owner: 'Unclaimable', hasMine: false },
-  { id: 'Northwest_Territories_01', owner: 'Unclaimable', hasMine: false},
-  { id: 'Northwest_Territories_02', owner: 'Unclaimable', hasMine: false},
-  { id: 'Yakutsk_01', owner: 'Unclaimable', hasMine: false},
 ];
 
 app.use(bodyParser.json());

@@ -94,6 +94,9 @@ function updateRegions(regionsData) {
         regionEl.setAttribute("stroke", "gold");
         regionEl.setAttribute("stroke-width", "0.2");
       }
+      console.log(`Region ${region.id} updated:`, region);
+    } else {
+      console.warn(`Region element with id ${region.id} not found.`);
     }
   });
 }
@@ -163,18 +166,30 @@ function handleMoveUnitBtnClick() {
     window.destinationText.textContent = `${travelTime.toFixed(1)}s`;
     svg.querySelector("#unitsGroup").appendChild(window.destinationText);
   }
-  
-  function loadMapData(url) {
-    fetch(url)
+
+function loadMapData(url) {
+  fetch(url)
       .then(response => response.json())
       .then(mapData => {
         createSVG(mapData);
-        // Remove the incorrect call to tileStats as a function
-        // tileStats(mapData);
         updatePlayerStats();
+        // Preload initial region states after the map is created
+        const initialRegions = [
+          { id: 'Jutland_01', owner: 'Player1', hasMine: false },
+          { id: 'Jutland_02', owner: 'Player2', hasMine: false },
+          { id: 'Jutland_03', owner: 'Player3', hasMine: true },
+          { id: 'Greenland_03', owner: 'Unclaimable', hasMine: false },
+          { id: 'Northwest_Territories_01', owner: 'Unclaimable', hasMine: false },
+          { id: 'Northwest_Territories_02', owner: 'Unclaimable', hasMine: false },
+          { id: 'Yakutsk_01', owner: 'Unclaimable', hasMine: false }
+        ];
+        console.log("Preloading initial region states:", initialRegions);
+        fetchGameState().then(() => {
+          updateRegions(initialRegions);
+        });
       })
       .catch(error => console.error("Error loading JSON:", error));
-  }
+}
   
   function setupEventListeners() {
     document.getElementById("createUnitBtn").addEventListener("click", () => addUnitToRegion("Jutland_01"));
