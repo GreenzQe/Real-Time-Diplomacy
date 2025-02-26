@@ -52,10 +52,6 @@ let regions = [
   { id: 'Northwest_Territories_01', owner: 'Unclaimable', hasMine: false},
   { id: 'Northwest_Territories_02', owner: 'Unclaimable', hasMine: false},
   { id: 'Yakutsk_01', owner: 'Unclaimable', hasMine: false},
-  { id: 'Scania_02', owner: 'Player2', hasMine: false },
-  { id: 'Scania_03', owner: 'Player2', hasMine: false },
-  { id: 'Scania_04', owner: 'Player2', hasMine: false },
-  { id: 'Scania_08', owner: 'Player3', hasMine: false }
 ];
 
 app.use(bodyParser.json());

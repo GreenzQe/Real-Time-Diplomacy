@@ -13,6 +13,7 @@ let destination = null;
 let selectedUnit = null;
 
 let currentPlayer = "Player1";
+let playerColors = {};
 let playerAlliance = "None";
 let playerGold = 1000;
 let playerSteel = 500;
@@ -45,11 +46,14 @@ async function fetchGameState() {
   try {
     const response = await fetch('/api/game-state');
     const state = await response.json();
+    // Store player colors
+    state.players.forEach(player => {
+      playerColors[player.username] = player.color;
+    });
     // Update armies based on server data
     updateArmies(state.armies);
     // Update regions (like ownership) from the server
     updateRegions(state.regions);
-    // (Players data can be used to update UI or for additional logic)
   } catch (error) {
     console.error("Error fetching game state:", error);
   }
@@ -81,20 +85,13 @@ function updateRegions(regionsData) {
     const regionEl = document.getElementById(region.id);
     if (regionEl) {
       regionEl.setAttribute("data-owner", region.owner);
-      // Update fill color based on owner.
-      const newColor =
-        region.owner === "Player1"
-          ? "red"
-          : region.owner === "Player2"
-          ? "blue"
-          : region.owner === "Player3"
-          ? "green"
-          : "gray";
+      // Update fill color based on owner
+      const newColor = playerColors[region.owner] || "gray";
       regionEl.setAttribute("fill", newColor);
       regionEl.setAttribute("data-base-color", newColor);
       // If region has a mine (for steel), you could also add an indicator
       if (region.hasMine) {
-        regionEl.setAttribute("stroke", "gold"); // or another visual cue
+        regionEl.setAttribute("stroke", "gold");
         regionEl.setAttribute("stroke-width", "0.2");
       }
     }
@@ -388,21 +385,21 @@ function createUnit(regionId, position, health, owner) {
 }
 
 function renderUnit(unit) {
-    const ownerColor = unit.owner === "Player1" ? "red" : unit.owner === "Player2" ? "blue" : "gray";
-    const unitElement = document.createElementNS(svgNS, "circle");
-    unitElement.setAttribute("cx", unit.position.x);
-    unitElement.setAttribute("cy", unit.position.y);
-    unitElement.setAttribute("r", 0.5);
-    unitElement.setAttribute("fill", ownerColor);
-    unitElement.setAttribute("stroke", "black");
-    unitElement.setAttribute("stroke-width", "0.1");
-  
-    const unitsGroup = svg.querySelector("#unitsGroup");
-    unitsGroup.appendChild(unitElement);
-  
-    unit.element = unitElement;
-    unitElement.addEventListener("click", () => selectUnit(unit));
-  }
+  const ownerColor = playerColors[unit.owner] || "gray";
+  const unitElement = document.createElementNS(svgNS, "circle");
+  unitElement.setAttribute("cx", unit.position.x);
+  unitElement.setAttribute("cy", unit.position.y);
+  unitElement.setAttribute("r", 0.5);
+  unitElement.setAttribute("fill", ownerColor);
+  unitElement.setAttribute("stroke", "black");
+  unitElement.setAttribute("stroke-width", "0.1");
+
+  const unitsGroup = svg.querySelector("#unitsGroup");
+  unitsGroup.appendChild(unitElement);
+
+  unit.element = unitElement;
+  unitElement.addEventListener("click", () => selectUnit(unit));
+}
   
 
   function addUnitToRegion(regionId, owner) {
